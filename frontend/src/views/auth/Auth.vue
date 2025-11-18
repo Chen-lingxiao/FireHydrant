@@ -1,7 +1,7 @@
 <script setup lang="ts"></script>
 
 <template>
-  <router-view />
+  <h1>登陆注册页面</h1>
 </template>
 
 <style scoped></style>
