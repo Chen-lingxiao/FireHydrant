@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
-import { createPinia } from 'pinia'
+// import { createPinia } from 'pinia'
+import pinia from './stores/index.ts' // 引入pinia实例
 
 import App from './App.vue'
 import router from './router'
@@ -10,7 +11,8 @@ import ElementPlus from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 const app = createApp(App)
 
-app.use(createPinia())
+// app.use(createPinia())
+app.use(pinia) // 注册pinia实例
 app.use(router)
 // 注册Element Plus，并设置语言为中文
 app.use(ElementPlus, {
