@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@element-plus/icons-vue':
+        specifier: ^2.3.2
+        version: 2.3.2(vue@3.5.24(typescript@5.9.3))
+      '@types/geojson':
+        specifier: ^7946.0.16
+        version: 7946.0.16
       axios:
         specifier: ^1.13.2
         version: 1.13.2

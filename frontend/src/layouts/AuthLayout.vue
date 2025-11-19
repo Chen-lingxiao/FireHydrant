@@ -2,6 +2,7 @@
 
 <template>
   <router-view />
+  <app-testtool></app-testtool>
 </template>
 
 <style scoped></style>
