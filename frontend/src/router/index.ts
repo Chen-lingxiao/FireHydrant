@@ -38,7 +38,8 @@ const router = createRouter({
             {
               path: 'hydrantlist',
               name: 'HydrantList',
-              component: () => import('@/views/console/list/HydrantList.vue'),
+              component: () =>
+                import('@/views/console/list/HydrantList.vue'),
             },
           ],
         },
