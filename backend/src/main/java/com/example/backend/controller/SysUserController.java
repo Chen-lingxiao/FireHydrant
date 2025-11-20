@@ -110,5 +110,23 @@ public class SysUserController {
         }
         return result;
     }
+    /**
+     * 退出登录接口
+     * Post http://localhost:8080/api/users/logout
+     * @param response 响应对象
+     * @return 退出结果
+     */
+    @PostMapping("/logout")
+    public Map<String, Object> logout(HttpServletResponse response) {
+        Map<String, Object> result = new HashMap<>();
+        // 清除Cookie（设置过期时间为0）
+        Cookie cookie = new Cookie("jwt-token", null);
+        cookie.setPath("/");
+        cookie.setMaxAge(0);
+        response.addCookie(cookie);
+        result.put("code", 200);
+        result.put("message", "退出成功");
+        return result;
+    }
 
 }

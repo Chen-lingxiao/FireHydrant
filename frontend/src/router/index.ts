@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useUserStore } from '@/stores/modules/userStore'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -32,14 +33,21 @@ const router = createRouter({
         {
           path: 'console',
           name: 'Console',
+          meta: { requiresAdmin: true }, // 需要管理员权限
           component: () => import('@/views/console/Console.vue'),
-          redirect: 'console/hydrantlist',
+          redirect: 'console/hydrantlist', // 默认进入消防栓列表页面
           children: [
             {
               path: 'hydrantlist',
               name: 'HydrantList',
               component: () =>
                 import('@/views/console/list/HydrantList.vue'),
+            },
+            {
+              path: 'userlist',
+              name: 'userlist',
+              component: () =>
+                import('@/views/console/list/UserList.vue'),
             },
           ],
         },
@@ -52,6 +60,36 @@ const router = createRouter({
       ],
     },
   ],
+})
+// 路由守卫
+router.beforeEach((to, from, next) => {
+  // 获取用户信息
+  const userStore = useUserStore()
+  // 判断目标路由是否需要登录
+  // 即除了登录页外的所有页面都需要登录
+  const needLogin = to.path !== '/login'
+
+  // 如果需要登录且用户未登录
+  if (needLogin && !userStore.isLoggedIn) {
+    // 跳转登录页
+    next('/')
+    // 如果是访问登录页且用户已登录
+  } else if (to.path === '/login' && userStore.isLoggedIn) {
+    next('/app/dashboard') // 跳转到默认登录后页面
+  } else if (to.meta.requiresAdmin) {
+    // 访问需要管理员权限的页面
+    if (userStore.role === 'ADMIN') {
+      // 是管理员，正常访问
+      next()
+    } else {
+      // 不是管理员，提示无权限并跳转到地图页
+      ElMessage.error('无权限访问该页面')
+      next('/app/dashboard')
+    }
+  } else {
+    // 其他情况，正常访问
+    next()
+  }
 })
 
 export default router

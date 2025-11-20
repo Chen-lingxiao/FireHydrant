@@ -1,26 +1,46 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-// import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/modules/userStore'
+import { logout } from '@/api/userInfo'
+import router from '@/router'
+const userStore = useUserStore()
 const route = useRoute() // 获取当前路由信息
 // const router = useRouter() // 用于编程式导航
 // 计算属性：应该激活的顶级菜单项
 const activeMenu = computed(() => {
   const path = route.path
   if (path.includes('/console')) {
-    return '/console' // 高亮“控制台”菜单
+    return '/app/console' // 高亮“控制台”菜单
   } else if (path.includes('/profile')) {
-    return '/profile' // 高亮“用户管理”菜单
+    return '/app/profile' // 高亮“用户管理”菜单
+  } else if (path.includes('/dashboard')) {
+    return '/app/dashboard' // 高亮“用户管理”菜单
   } else {
     return path
   }
 })
+// 退出登录方法
+const HandleLogout = async () => {
+  try {
+    await logout()
+    userStore.clearUserInfo()
+    router.push('/login')
+    ElMessage.success('退出成功')
+  } catch (error) {
+    console.error('退出登录失败', error)
+  }
+}
 </script>
 <template>
   <header>
     <!-- logo -->
     <div class="header-logo">
-      <img class="logo-img" src="/logo.png" alt="校园消防栓管理系统" />
+      <img
+        class="logo-img"
+        src="/logo.png"
+        alt="校园消防栓管理系统"
+      />
       <span class="logo-text">校园消防栓管理系统</span>
       <span class="logo-version">0.0.1</span>
     </div>
@@ -38,16 +58,22 @@ const activeMenu = computed(() => {
         <el-menu-item index="/app/profile"
           ><el-dropdown>
             <div class="user-info">
-              <p>欢迎: xxxx</p>
+              <p>欢迎: {{ userStore.userInfo?.name }}</p>
               <!-- <div class="user-icon">
                 <el-icon color="#fff" :size="24"><User /></el-icon>
               </div> -->
             </div>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item @click="toInfo()">基本资料</el-dropdown-item>
-                <el-dropdown-item @click="toRepwd()">重置密码</el-dropdown-item>
-                <el-dropdown-item @click="logout()">退出登录</el-dropdown-item>
+                <el-dropdown-item @click="toInfo()"
+                  >基本资料</el-dropdown-item
+                >
+                <!-- <el-dropdown-item @click="toRepwd()"
+                  >重置密码</el-dropdown-item
+                > -->
+                <el-dropdown-item @click="HandleLogout()"
+                  >退出登录</el-dropdown-item
+                >
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -91,21 +117,31 @@ header {
 /* 导航栏 */
 .header-nav {
   margin-right: 10px;
-  width: 330px;
+  width: 350px;
 }
 // 用户信息下拉菜单
 .el-dropdown {
   display: flex;
+  // 往下移动
   align-items: center;
   cursor: pointer;
   .user-info {
     display: flex;
     align-items: center;
   }
+  .user-name {
+    font-size: 14px;
+    color: #333;
+    font-weight: bold;
+  }
 }
-.el-dropdown .user-name {
-  font-size: 14px;
-  color: #333;
-  font-weight: bold;
+.el-dropdown:focus-visible {
+  outline: none;
+}
+.user-info:focus-visible {
+  outline: none;
+}
+p :focus-visible {
+  outline: none;
 }
 </style>
