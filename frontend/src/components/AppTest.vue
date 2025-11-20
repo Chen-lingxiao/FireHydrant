@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { GetFeatures } from '@/api/GeoJSON'
+import { GetFeatures } from '@/api/geoserver.ts'
 /**
  * 获取geojson数据
  * @param {string} layerName - 图层名称

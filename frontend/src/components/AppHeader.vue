@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/modules/userStore'
-import { logout } from '@/api/userInfo'
+import { logout } from '@/api/user'
 import router from '@/router'
 const userStore = useUserStore()
 const route = useRoute() // 获取当前路由信息

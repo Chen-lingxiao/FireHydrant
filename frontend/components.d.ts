@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AppFooter: typeof import('./src/components/AppFooter.vue')['default']
     AppHeader: typeof import('./src/components/AppHeader.vue')['default']
+    AppTest: typeof import('./src/components/AppTest.vue')['default']
     AppTesttool: typeof import('./src/components/AppTesttool.vue')['default']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElDropdown: typeof import('element-plus/es')['ElDropdown']

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { User, Lock } from '@element-plus/icons-vue'
 import { ref } from 'vue'
-import { login, register } from '@/api/userInfo'
+import { login, register } from '@/api/user'
 import { useUserStore } from '@/stores/modules/userStore'
 import router from '@/router'
 import type { FormInstance } from 'element-plus'
