@@ -36,11 +36,7 @@ const HandleLogout = async () => {
   <header>
     <!-- logo -->
     <div class="header-logo">
-      <img
-        class="logo-img"
-        src="/logo.png"
-        alt="校园消防栓管理系统"
-      />
+      <img class="logo-img" src="/logo.png" alt="校园消防栓管理系统" />
       <span class="logo-text">校园消防栓管理系统</span>
       <span class="logo-version">0.0.1</span>
     </div>
@@ -65,9 +61,7 @@ const HandleLogout = async () => {
             </div>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item @click="toInfo()"
-                  >基本资料</el-dropdown-item
-                >
+                <el-dropdown-item @click="toInfo()">基本资料</el-dropdown-item>
                 <!-- <el-dropdown-item @click="toRepwd()"
                   >重置密码</el-dropdown-item
                 > -->
@@ -93,7 +87,9 @@ header {
   position: relative;
   z-index: 10;
 }
-
+header:hover {
+  visibility: visible; /* 鼠标悬停时显示 */
+}
 .header-logo {
   display: flex;
   align-items: center;

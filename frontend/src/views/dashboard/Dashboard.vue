@@ -101,14 +101,12 @@ const loadRoadData = async () => {
 
       dataSource.entities.values.forEach((entity) => {
         if (entity.polyline) {
-          // 使用PolylineGlowMaterialProperty实现道路流光效果
-          entity.polyline.material = new Cesium.PolylineGlowMaterialProperty({
-            color: Cesium.Color.BLUE, // 主颜色改为蓝色，对比度更强
-            glowPower: 0.2, // 调整光晕强度 (推荐值: 0.1-0.25)
-            taperPower: 0.8, // 调整边缘渐变 (推荐值: 0.5-1.0)
-          })
-
-          entity.polyline.width = new Cesium.ConstantProperty(8) // 增加线宽使效果更明显
+          entity.polyline.material = new Cesium.ColorMaterialProperty(
+            Cesium.Color.fromCssColorString('#4fc3f7').withAlpha(0.9),
+          ) // 设置蓝色
+          entity.polyline.width = new Cesium.ConstantProperty(1) // 增加线宽使效果更明显
+          // 贴地
+          entity.polyline.clampToGround = new Cesium.ConstantProperty(true)
         }
       })
 
@@ -132,14 +130,95 @@ const loadFireHydrantData = async () => {
         // 移除默认的广告牌和标签
         entity.billboard = undefined
         entity.label = undefined
+        const currentStatus = entity.properties?.currentStatus.getValue()
+        const name = entity.properties?.Name.getValue()
+        const position = entity.position?.getValue(Cesium.JulianDate.now())
 
+        if (!position) return
+
+        // 确定颜色
+        let pointColor = Cesium.Color.SKYBLUE
+        let pulseColor = Cesium.Color.BLUE
+
+        if (currentStatus === 'normal') {
+          pointColor = Cesium.Color.LIMEGREEN
+          pulseColor = Cesium.Color.GREEN
+        } else if (currentStatus === 'error') {
+          pointColor = Cesium.Color.RED
+          pulseColor = Cesium.Color.RED
+        } else if (currentStatus === 'repairing') {
+          pointColor = Cesium.Color.ORANGE
+          pulseColor = Cesium.Color.ORANGE
+        }
         // 创建点图形
         entity.point = new Cesium.PointGraphics({
-          color: Cesium.Color.SKYBLUE,
+          color: pointColor,
           pixelSize: 8,
-          // outlineColor: Cesium.Color.WHITE,
-          // outlineWidth: 2,
+          outlineColor: pointColor,
+          outlineWidth: 1,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND, // 贴地
+          disableDepthTestDistance: Number.POSITIVE_INFINITY, // 关键：禁用深度测试
         })
+        // 只给错误状态的消防栓添加动态扩散效果
+        if (currentStatus === 'error') {
+          // 创建动态扩散效果 - 使用圆形
+          const createPulseCircle = (delay: number, maxRadius: number) => {
+            const startTime = new Date().getTime()
+
+            return new Cesium.Entity({
+              position: position,
+              ellipse: {
+                semiMinorAxis: maxRadius, // 固定半径
+                semiMajorAxis: maxRadius, // 固定半径，确保是圆形
+                material: new Cesium.ColorMaterialProperty(
+                  new Cesium.CallbackProperty(() => {
+                    const elapsed =
+                      (new Date().getTime() - startTime - delay * 1000) / 1000
+                    const progress = (elapsed % 6) / 6 // 3秒循环
+
+                    // 使用更平滑的透明度过渡，避免突然消失
+                    const alpha = 0.6 * Math.sin(progress * Math.PI) // 正弦波实现平滑过渡
+
+                    // const alpha = 0.6 * (1 - progress / 0.8)
+                    return pulseColor.withAlpha(alpha)
+                  }, false),
+                ),
+                height: 1,
+                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                outline: false,
+              },
+            })
+          }
+
+          // 更密集的脉冲环（8个）
+          dataSource.entities.add(createPulseCircle(0, 6))
+          dataSource.entities.add(createPulseCircle(0.3, 9))
+          dataSource.entities.add(createPulseCircle(0.6, 12))
+          dataSource.entities.add(createPulseCircle(0.9, 15))
+          dataSource.entities.add(createPulseCircle(1.2, 18))
+          dataSource.entities.add(createPulseCircle(1.5, 21))
+          dataSource.entities.add(createPulseCircle(1.8, 24))
+          dataSource.entities.add(createPulseCircle(2.1, 27))
+        }
+
+        // 给错误和维修状态的点加标签
+        if (currentStatus === 'error' || currentStatus === 'repairing') {
+          entity.label = new Cesium.LabelGraphics({
+            showBackground: true, // 启用标签背景
+            backgroundColor: pointColor.withAlpha(0.8), // 标签背景颜色
+            scale: 0.5, // 缩小字体大小
+            font: 'bold 32px sans-serif',
+            text: name,
+            fillColor: Cesium.Color.WHITE, // 标签字体颜色
+            outlineColor: Cesium.Color.BLACK, // 标签边框颜色
+            outlineWidth: 1, // 边框宽度
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE, // 同时具有填充和轮廓样式
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM, // 标签垂直对齐方式
+            pixelOffset: new Cesium.Cartesian2(0, -20), // 标签位置稍微偏移
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND, // 贴地
+            disableDepthTestDistance: Number.POSITIVE_INFINITY, // 关键：禁用深度测试
+          })
+        }
       })
 
       // 将数据源添加到管理器
@@ -154,17 +233,21 @@ const loadCampusBoundaryData = async () => {
   try {
     // 从GeoServer获取数据
     const geojsonData = await getGeojson('sdjzdx_Boundary_Poly')
-
     if (geojsonData) {
-      // 使用Cesium的GeoJsonDataSource加载数据
-      await Cesium.GeoJsonDataSource.load(geojsonData, {
-        stroke: Cesium.Color.SKYBLUE, // 线/面轮廓颜色
-        fill: Cesium.Color.BLACK.withAlpha(0), // 面填充颜色及透明度
-        strokeWidth: 10, // 线/面轮廓宽度
-      }).then((dataSource) => {
-        // 将数据源添加到管理器
-        viewer.value?.dataSources.add(dataSource)
+      const dataSource = await Cesium.GeoJsonDataSource.load(geojsonData)
+      dataSource.entities.values.forEach((entity) => {
+        if (entity.polygon) {
+          entity.polygon.material = new Cesium.ColorMaterialProperty(
+            Cesium.Color.fromCssColorString('#1e88e5').withAlpha(0.25), // 半透明蓝色
+          )
+          entity.polygon.outline = new Cesium.ConstantProperty(true)
+          entity.polygon.outlineColor = new Cesium.ConstantProperty(
+            Cesium.Color.fromCssColorString('#64b5f6').withAlpha(0.8), // 亮蓝色
+          )
+          entity.polygon.outlineWidth = new Cesium.ConstantProperty(2) // 轮廓线宽
+        }
       })
+      viewer.value?.dataSources.add(dataSource)
     }
   } catch (error) {
     console.error('显示校园范围数据失败：', error)
@@ -181,20 +264,71 @@ const load3DTilesLayer = async () => {
         show: true,
       },
     )
+    // 纯渐变色+动态光圈
+
+    const customShader = new Cesium.CustomShader({
+      fragmentShaderText: `
+            void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material) {
+                // 获取模型坐标位置 - 使用Z轴作为垂直方向
+                vec3 positionMC = fsInput.attributes.positionMC;
+
+                // ==================== 基础渐变色部分 ====================
+                // 创建从底部到顶部的蓝绿色渐变
+                // 底部: vec3(0.0, 1.0, 1.0) - 青色
+                // 顶部: vec3(0.0, 0.5, 0.8) - 深蓝色
+                float heightFactor = positionMC.z * 0.02; // 渐变系数
+                material.diffuse = vec3(0.0, 1.0 - heightFactor, 1.0 - heightFactor * 0.6);
+
+                // ==================== 动态光圈参数详解 ====================
+                float baseHeight = 0.0;        // 基础高度：从地面开始 (0米)
+                float buildingHeight = 25.0;   // 建筑总高度:25米
+                float glowWidth = 1.0;         // 光圈宽度:3米 (控制光环粗细)
+                float moveSpeed = 300.0;       // 移动速度：数值越大移动越慢
+
+                // ==================== 光圈计算逻辑 ====================
+                // 1. 计算当前点相对于建筑底部的高度
+                float currentHeight = positionMC.z - baseHeight;
+
+                // 2. 计算光圈当前位置 (0.0 ~ 1.0 循环)
+                // czm_frameNumber: Cesium帧计数器,每帧自动+1
+                // fract(): 取小数部分,实现0-1循环
+                float glowPosition = fract(czm_frameNumber / moveSpeed);
+
+                // 3. 将当前高度归一化到0-1范围
+                float normalizedHeight = clamp(currentHeight / buildingHeight, 0.0, 1.0);
+
+                // 4. 计算当前点与光圈位置的距离
+                float distanceToGlow = abs(normalizedHeight - glowPosition);
+
+                // 5. 计算光圈强度 (距离越近强度越高)
+                float glowIntensity = 1.0 - smoothstep(0.0, glowWidth / buildingHeight, distanceToGlow);
+
+                // ==================== 应用光圈效果 ====================
+                // 创建白色光圈颜色
+                vec3 glowColor = vec3(0.0, 0.8, 1.0);
+
+                // 混合原始颜色和光圈颜色
+                material.diffuse = mix(material.diffuse, glowColor, glowIntensity * 0.9);
+
+                // 增加整体亮度
+                material.diffuse += material.diffuse * glowIntensity * 1.0;
+            }`,
+    })
+    tileset.customShader = customShader
     // 添加3D Tiles图层到场景
     viewer.value?.scene.primitives.add(tileset)
   } catch (error) {
     console.error('加载3D Tiles图层失败：', error)
   }
 }
-// 加载并显示所有图层
-const loadGeoJSONLayers = async () => {
-  loadCampusBoundaryData() // 加载校园范围数据
-  loadFireHydrantData() // 加载消防栓点数据
-  loadRoadData() // 加载道路线数据
-  load3DTilesLayer() // 加载3D Tiles图层
-}
 
+// 加载并显示所有图层
+const loadLayers = async () => {
+  await loadCampusBoundaryData() // 加载校园范围数据
+  await loadRoadData() // 加载道路线数据
+  await load3DTilesLayer() // 加载3D Tiles图层
+  await loadFireHydrantData() // 加载消防栓点数据（最后加载确保在最上层）
+}
 /**
  * 初始化Cesium Viewer
  */
@@ -209,6 +343,8 @@ const initCesium = async () => {
     infoBox: false, // 保留信息框（点击实体看详情）
     vrButton: false, // 禁用VR按钮
   })
+  // 关闭抗锯齿
+  viewer.value.scene.postProcessStages.fxaa.enabled = false
   // 添加Mapbox底图
   viewer.value.imageryLayers.addImageryProvider(mapboxImageryProvider)
   // layerRefs.vector.base =
@@ -228,7 +364,7 @@ const initCesium = async () => {
   //     layerProviders.imagery.annotation,
   //   )
   // switchBaseLayer('vector')
-  flyToInitialView()
+  flyToInitialView() // 飞到初始视角
 }
 /**
  * 切换到指定类型的底图
@@ -258,9 +394,9 @@ const flyToInitialView = (): void => {
   if (!viewer.value) return
 
   viewer.value.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(117.177, 36.673, 650.0),
+    destination: Cesium.Cartesian3.fromDegrees(117.1745, 36.6735, 600.0),
     orientation: {
-      heading: Cesium.Math.toRadians(10.0), // 朝向
+      heading: Cesium.Math.toRadians(20.0), // 朝向
       pitch: Cesium.Math.toRadians(-30.0), // 俯仰角
       roll: 0.0,
     },
@@ -278,7 +414,7 @@ const destroyCesium = (): void => {
 }
 onMounted(() => {
   initCesium() // 初始化Cesium
-  loadGeoJSONLayers() // 加载GeoJSON图层
+  loadLayers() // 加载GeoJSON图层
 })
 onBeforeUnmount(() => {
   destroyCesium()
