@@ -13,7 +13,7 @@ footer {
   width: 100%;
   font-size: 12px;
   text-align: center;
-  color: aquamarine;
-  background-color: blue;
+  color: rgb(88, 78, 78);
+  /* background-color: blue; */
 }
 </style>
