@@ -1,7 +1,29 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import * as Cesium from 'cesium'
+import * as echarts from 'echarts'
 import { GetFeatures } from '@/api/geoserver.ts'
+
+// 定义GeoJSON要素类型
+interface GeoJsonFeature {
+  properties: {
+    FID: string
+    Name: string
+    currentStatus: string
+    currentPressure: number
+    managementUnit: string
+  }
+}
+
+// 定义消防栓数据类型
+interface FireHydrantData {
+  id: string
+  name: string
+  status: string
+  pressure: number
+  managementUnit: string
+}
+
 // 导入环境变量（Vite项目）
 // const tiandituToken = import.meta.env.VITE_TIANDITU_TOKEN //天地图token
 const cesiumToken = import.meta.env.VITE_CESIUM_TOKEN // cesium token
@@ -9,78 +31,13 @@ const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN // Mapbox token
 Cesium.Ion.defaultAccessToken = cesiumToken // 设置Cesium Ion的访问令牌
 const mapboxStyleId = 'mapbox/dark-v11' // Mapbox样式ID
 const viewer = ref<Cesium.Viewer | null>(null)
+// const FireHydrantGeojson = ref<Cesium.GeoJsonDataSource | null>(null)
 const mapboxImageryProvider = new Cesium.UrlTemplateImageryProvider({
   url: `https://api.mapbox.com/styles/v1/${mapboxStyleId}/tiles/256/{z}/{x}/{y}?access_token=${mapboxToken}`,
   credit: '© Mapbox © OpenStreetMap contributors', // 版权信息
   tilingScheme: new Cesium.WebMercatorTilingScheme(), // Web墨卡托投影（Mapbox默认）
   maximumLevel: 18, // 最大缩放级别（Mapbox最大支持22，根据需求调整）
-  // flipXY: false, // Mapbox瓦片坐标无需翻转（Cesium默认适配）
 })
-// const layerProviders = {
-//   vector: {
-//     base: new Cesium.WebMapTileServiceImageryProvider({
-//       url: `https://t{s}.tianditu.gov.cn/vec_w/wmts?tk=${tiandituToken}`,
-//       layer: 'vec',
-//       style: 'default',
-//       format: 'tiles',
-//       tileMatrixSetID: 'w',
-//       subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-//       maximumLevel: 18,
-//     }),
-//     annotation: new Cesium.WebMapTileServiceImageryProvider({
-//       url: `https://t{s}.tianditu.gov.cn/cva_w/wmts?tk=${tiandituToken}`,
-//       layer: 'cva',
-//       style: 'default',
-//       format: 'tiles',
-//       tileMatrixSetID: 'w',
-//       subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-//       maximumLevel: 18,
-//     }),
-//   },
-//   imagery: {
-//     base: new Cesium.WebMapTileServiceImageryProvider({
-//       url: `https://t{s}.tianditu.gov.cn/img_w/wmts?tk=${tiandituToken}`,
-//       layer: 'img',
-//       style: 'default',
-//       format: 'tiles',
-//       tileMatrixSetID: 'w',
-//       subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-//       maximumLevel: 18,
-//     }),
-//     annotation: new Cesium.WebMapTileServiceImageryProvider({
-//       url: `https://t{s}.tianditu.gov.cn/cia_w/wmts?tk=${tiandituToken}`,
-//       layer: 'cia',
-//       style: 'default',
-//       format: 'tiles',
-//       tileMatrixSetID: 'w',
-//       subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-//       maximumLevel: 18,
-//     }),
-//   },
-// }
-// // 图层引用
-// const layerRefs = {
-//   vector: {
-//     base: null as Cesium.ImageryLayer | null,
-//     annotation: null as Cesium.ImageryLayer | null,
-//   },
-//   imagery: {
-//     base: null as Cesium.ImageryLayer | null,
-//     annotation: null as Cesium.ImageryLayer | null,
-//   },
-// }
-
-// const activeLayerType = ref<'vector' | 'imagery'>('vector')
-// const SCI_FI_COLORS = {
-//   PRIMARY_BLUE: Cesium.Color.fromCssColorString('#00D4FF'),
-//   SECONDARY_BLUE: Cesium.Color.fromCssColorString('#0099FF'),
-//   ACCENT_BLUE: Cesium.Color.fromCssColorString('#0066FF'),
-//   GLOW_BLUE: Cesium.Color.fromCssColorString('#00FFFF'),
-//   NORMAL_GREEN: Cesium.Color.fromCssColorString('#00FF88'),
-//   ERROR_RED: Cesium.Color.fromCssColorString('#FF3366'),
-//   BUILDING_BASE: Cesium.Color.fromCssColorString('#1E3A5F'),
-//   BUILDING_TOP: Cesium.Color.fromCssColorString('#00D4FF'),
-// }
 // 加载geojson数据
 const getGeojson = async (layerName: string) => {
   try {
@@ -116,15 +73,17 @@ const loadRoadData = async () => {
     console.error('显示道路线数据失败：', error)
   }
 }
+// 创建一个映射表，用于存储所有实体
+const entityMap = new Map<string, Cesium.Entity>()
 // 加载消防栓点数据
 const loadFireHydrantData = async () => {
   try {
     // 从GeoServer获取数据
     const geojsonData = await getGeojson('sdjzdx_FireHydranty_Point')
+    // console.log('消防栓GeoJSON数据：', FireHydrantGeojson.value)
     if (geojsonData) {
       // 使用Cesium的GeoJsonDataSource加载数据
       const dataSource = await Cesium.GeoJsonDataSource.load(geojsonData)
-
       // 遍历所有实体并设置为蓝色小圆点样式
       dataSource.entities.values.forEach((entity) => {
         // 移除默认的广告牌和标签
@@ -133,7 +92,10 @@ const loadFireHydrantData = async () => {
         const currentStatus = entity.properties?.currentStatus.getValue()
         const name = entity.properties?.Name.getValue()
         const position = entity.position?.getValue(Cesium.JulianDate.now())
-
+        if (name) {
+          // 添加到entityMap 存储到映射表
+          entityMap.set(name, entity)
+        }
         if (!position) return
 
         // 确定颜色
@@ -329,6 +291,350 @@ const loadLayers = async () => {
   await load3DTilesLayer() // 加载3D Tiles图层
   await loadFireHydrantData() // 加载消防栓点数据（最后加载确保在最上层）
 }
+
+// echarts 表格数据
+const statusPieChart = ref<echarts.ECharts | null>(null) // 设备状态数量饼图
+const pressureBarChart = ref<echarts.ECharts | null>(null) // 压力分布柱状图
+const avgPressureLineChart = ref<echarts.ECharts | null>(null) // 平均压力变化折线图
+// 压力区间配置（贴合消防栓实际压力标准）
+const PRESSURE_RANGES = [
+  { label: '<0.15', min: -Infinity, max: 0.15, color: '#ff4d4f' },
+  { label: '0.15-0.3', min: 0.15, max: 0.3, color: '#52c41a' },
+  { label: '0.3-0.6', min: 0.3, max: 0.6, color: '#faad14' },
+  { label: '>0.6', min: 0.6, max: Infinity, color: '#e53935' },
+]
+// 正常消防栓列表
+const normalFireHydrants = ref<FireHydrantData[]>([])
+const errorFireHydrants = ref<FireHydrantData[]>([])
+const repairingFireHydrants = ref<FireHydrantData[]>([])
+// 获取设备状态数量饼图数据
+let statusPieData: { value: number; name: string }[] = []
+// 压力分布柱状图数据
+let pressureBarData: {
+  value: number
+  name: string
+  itemStyle: { color: string }
+}[] = []
+// 平均压力变化折线图数据
+const avgPressureLineData: {
+  value: number
+  name: string
+}[] = []
+let pressureLineChartInterval: number | null = null // 折线图定时器ID
+
+// 加载消防栓点数据
+const loadEcharts = async () => {
+  try {
+    // 从GeoServer获取数据
+    const geojsonData = await getGeojson('sdjzdx_FireHydranty_Point')
+    console.log('加载echarts消防栓点数据：', geojsonData)
+    if (geojsonData) {
+      const data = geojsonData.features.map((feature: GeoJsonFeature) => {
+        return {
+          id: feature.properties.FID, // ID
+          name: feature.properties.Name, // 名称
+          status: feature.properties.currentStatus, // 设备状态
+          pressure: feature.properties.currentPressure, // 压力
+          managementUnit: feature.properties.managementUnit, // 所属管理单元
+        }
+      })
+      // console.log('处理后的消防栓数据：', data)
+      // -------------------------- 按照状态过滤筛选数据 --------------------------
+      normalFireHydrants.value = data.filter(
+        (item: { status: string }) => item.status === 'normal',
+      )
+      errorFireHydrants.value = data.filter(
+        (item: { status: string }) => item.status === 'error',
+      )
+      repairingFireHydrants.value = data.filter(
+        (item: { status: string }) => item.status === 'repairing',
+      )
+
+      // -------------------------- 统计设备状态数量（饼图） --------------------------
+      statusPieData = [
+        { value: normalFireHydrants.value.length, name: '正常' },
+        { value: errorFireHydrants.value.length, name: '异常' },
+        { value: repairingFireHydrants.value.length, name: '维修' },
+      ]
+      // -------------------------- 统计压力区间数量（柱状图） --------------------------
+      pressureBarData = PRESSURE_RANGES.map((range) => {
+        const filteredData = data.filter(
+          (item: { pressure: number }) =>
+            item.pressure >= range.min && item.pressure <= range.max,
+        )
+        return {
+          value: filteredData.length,
+          name: range.label,
+          itemStyle: {
+            color: range.color,
+          },
+        }
+      })
+      // -------------------------- 模拟数据压力变化（折线图） --------------------------
+      // 模拟数据
+      // 获得当前数据压力平均值,保留2位小数
+      const avgPressure = (
+        data.reduce(
+          (acc: number, item: { pressure: number }) => acc + item.pressure,
+          0,
+        ) / data.length
+      ).toFixed(2)
+      // 定时器，假设每3小时更新一次，新数据为模拟数据
+      avgPressureLineData.push({
+        value: Number(avgPressure),
+        name: new Date().toLocaleTimeString(),
+      })
+
+      // 如果已有定时器，先清除
+      if (pressureLineChartInterval) {
+        clearInterval(pressureLineChartInterval)
+      }
+
+      // 设置新的定时器，每3小时更新一次数据 (为了演示效果，这里设置为10秒)
+      pressureLineChartInterval = window.setInterval(() => {
+        // 生成 0.2-0.8 之间的随机数，保留2位小数（适配压力数据格式）
+        const randomNum = Number((0.2 + Math.random() * (0.8 - 0.2)).toFixed(2))
+        // 添加新数据到数组尾部
+        avgPressureLineData.push({
+          value: randomNum,
+          name: new Date().toLocaleTimeString(),
+        })
+        // 关键：若数组长度超过8，删除最前面（最早）的元素
+        if (avgPressureLineData.length > 8) {
+          avgPressureLineData.shift() // 删除数组第一个元素
+        }
+
+        // 更新图表
+        if (avgPressureLineChart.value) {
+          avgPressureLineChart.value.setOption({
+            xAxis: {
+              data: avgPressureLineData.map((item) => item.name),
+            },
+            series: [
+              {
+                data: avgPressureLineData.map((item) => item.value),
+              },
+            ],
+          })
+        }
+        console.log('更新压力分布数据：', avgPressureLineData)
+      }, 10000) // 10秒更新一次（模拟3小时）
+    }
+  } catch (error) {
+    console.error('加载消防栓点数据失败：', error)
+  }
+}
+//-------------------------- 初始化设备状态数量饼图 --------------------------//
+const initStatusPieChart = (
+  statusPieData: { value: number; name: string }[],
+) => {
+  // 确保DOM元素存在
+  const chartDom = document.getElementById('status-pie-chart')
+  if (!chartDom) return
+
+  statusPieChart.value = echarts.init(chartDom)
+
+  // 处理空数据情况
+  const processedData =
+    statusPieData && statusPieData.length > 0
+      ? statusPieData.map((item) => ({
+          value: item.value,
+          name: item.name,
+        }))
+      : [{ value: 0, name: '暂无数据' }]
+
+  const option = {
+    title: {
+      text: '设备状态数量',
+      left: 'center',
+      textStyle: {
+        fontSize: 14,
+        color: '#ffffff', // 提亮标题文字颜色
+      },
+    },
+    // 提示框
+    tooltip: {
+      trigger: 'item',
+      textStyle: {
+        color: '#000000',
+      },
+    },
+    // 图例
+    legend: {
+      orient: 'vertical',
+      left: 'left',
+      textStyle: {
+        fontSize: 12,
+        color: '#ffffff', // 提亮图例文字颜色
+      },
+    },
+    // series
+    series: [
+      {
+        name: '设备状态',
+        type: 'pie',
+        radius: ['30%', '55%'], // 设置饼图的半径
+        data: processedData,
+        color: ['#52c41a', '#ff0000', '#ffa500'], // 绿色、红色、橙色
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 10,
+            shadowOffsetX: 0,
+            shadowColor: 'rgba(0, 0, 0, 0.5)',
+          },
+        },
+        label: {
+          color: '#ffffff', // 提亮标签文字颜色
+        },
+      },
+    ],
+  }
+  statusPieChart.value?.setOption(option)
+}
+//-------------------------- 初始化状态分布柱状图 --------------------------//
+const initPressureBarChart = (
+  pressureBarData: {
+    value: number
+    name: string
+    itemStyle: { color: string }
+  }[],
+) => {
+  // 确保DOM元素存在
+  const chartDom = document.getElementById('pressure-bar-chart')
+  if (!chartDom) return
+
+  pressureBarChart.value = echarts.init(chartDom)
+
+  // 处理空数据情况
+  const processedData =
+    pressureBarData && pressureBarData.length > 0
+      ? pressureBarData
+      : [{ value: 0, name: '暂无数据', itemStyle: { color: '#999999' } }]
+
+  const option = {
+    title: {
+      text: '压力分布柱状图',
+      left: 'center',
+      textStyle: {
+        fontSize: 14,
+        color: '#ffffff', // 提亮标题文字颜色
+      },
+    },
+    tooltip: {
+      trigger: 'item',
+      textStyle: {
+        color: '#000000',
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: processedData.map((item) => item.name),
+      axisLabel: {
+        fontSize: 10,
+        color: '#ffffff', // 提亮X轴标签文字颜色
+      },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        fontSize: 10,
+        color: '#ffffff', // 提亮Y轴标签文字颜色
+      },
+    },
+    series: [
+      {
+        data: processedData.map((item) => ({
+          value: item.value,
+          itemStyle: item.itemStyle,
+        })),
+        type: 'bar',
+        label: {
+          show: true,
+          position: 'top',
+          color: '#ffffff', // 提亮柱状图标签文字颜色
+        },
+      },
+    ],
+  }
+  pressureBarChart.value?.setOption(option)
+}
+// -------------------------- 初始化平均压力变化折线图 --------------------------
+const initPressureLineChart = (
+  avgPressureLineData: { value: number; name: string }[],
+) => {
+  // 确保DOM元素存在
+  const chartDom = document.getElementById('avg-pressure-line-chart')
+  if (!chartDom) return
+  avgPressureLineChart.value = echarts.init(chartDom) // 初始化折线图
+  const option = {
+    title: {
+      text: '平均压力变化折线图',
+      left: 'center',
+      textStyle: {
+        fontSize: 14,
+        color: '#ffffff',
+      },
+    },
+    tooltip: {
+      trigger: 'item',
+      textStyle: {
+        // 黑色文字
+        color: '#000000',
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: avgPressureLineData.map((item) => item.name),
+      axisLabel: {
+        color: '#ffffff', // 提亮X轴标签文字颜色
+      },
+    },
+    yAxis: {
+      type: 'value',
+      name: '压力值 (MPa)',
+      nameTextStyle: {
+        color: '#ffffff', // 提亮Y轴名称文字颜色
+      },
+      axisLabel: {
+        color: '#ffffff', // 提亮Y轴标签文字颜色
+      },
+    },
+    series: [
+      {
+        data: avgPressureLineData.map((item) => item.value),
+        type: 'line',
+        smooth: false, // 直线
+        symbolSize: 8, // 标记点大小
+        label: {
+          show: true,
+          position: 'top',
+          formatter: '{c} MPa',
+          color: '#ffffff', // 提亮数据标签文字颜色
+        },
+        lineStyle: {
+          color: '#ffffff', // 提亮点标记颜色
+        },
+        itemStyle: {
+          color: '#ffffff', // 提亮点标记颜色
+        },
+      },
+    ],
+  }
+  avgPressureLineChart.value?.setOption(option)
+}
+// -------------------------- 工具函数：状态中文映射 --------------------------
+// const getStatusText = (status: string) => {
+//   switch (status) {
+//     case 'normal':
+//       return '正常'
+//     case 'error':
+//       return '压力异常'
+//     case 'repairing':
+//       return '维修中'
+//     default:
+//       return '未知'
+//   }
+// }
 /**
  * 初始化Cesium Viewer
  */
@@ -347,45 +653,8 @@ const initCesium = async () => {
   viewer.value.scene.postProcessStages.fxaa.enabled = false
   // 添加Mapbox底图
   viewer.value.imageryLayers.addImageryProvider(mapboxImageryProvider)
-  // layerRefs.vector.base =
-  //   viewer.value.imageryLayers.addImageryProvider(
-  //     layerProviders.vector.base,
-  //   )
-  // layerRefs.vector.annotation =
-  //   viewer.value.imageryLayers.addImageryProvider(
-  //     layerProviders.vector.annotation,
-  //   )
-  // layerRefs.imagery.base =
-  //   viewer.value.imageryLayers.addImageryProvider(
-  //     layerProviders.imagery.base,
-  //   )
-  // layerRefs.imagery.annotation =
-  //   viewer.value.imageryLayers.addImageryProvider(
-  //     layerProviders.imagery.annotation,
-  //   )
-  // switchBaseLayer('vector')
   flyToInitialView() // 飞到初始视角
 }
-/**
- * 切换到指定类型的底图
- * @param type 图层类型 - 'vector' 或 'imagery'
- */
-// const switchBaseLayer = (type: 'vector' | 'imagery'): void => {
-//   if (!viewer.value) return
-
-//   // 隐藏所有图层
-//   Object.values(layerRefs).forEach((layerGroup) => {
-//     if (layerGroup.base) layerGroup.base.show = false
-//     if (layerGroup.annotation) layerGroup.annotation.show = false
-//   })
-
-//   // 显示选中的图层
-//   const targetLayer = layerRefs[type]
-//   if (targetLayer.base) targetLayer.base.show = true
-//   if (targetLayer.annotation) targetLayer.annotation.show = true
-
-//   activeLayerType.value = type
-// }
 
 /**
  * 飞到初始视角
@@ -411,10 +680,61 @@ const destroyCesium = (): void => {
     viewer.value.destroy()
     viewer.value = null
   }
+
+  // 清理折线图定时器
+  if (pressureLineChartInterval) {
+    clearInterval(pressureLineChartInterval)
+    pressureLineChartInterval = null
+  }
 }
-onMounted(() => {
+
+// 添加 handleClick 方法，用于处理表格中"查看"按钮的点击事件
+const handleClick = (row: FireHydrantData) => {
+  // 打印对应行信息
+  console.log(row)
+  // 根据name查找实体
+  const entity = entityMap.get(row.name)
+  if (entity && viewer.value) {
+    // 获取实体位置
+    const position = entity.position?.getValue(Cesium.JulianDate.now())
+
+    if (position) {
+      // 将贴地点位转换为Cartographic格式添加高度
+      const cartographic = Cesium.Cartographic.fromCartesian(position)
+      const elevatedPosition = Cesium.Cartesian3.fromRadians(
+        cartographic.longitude,
+        cartographic.latitude,
+        cartographic.height + 500, // 添加500米高度
+      )
+      // 飞行到该位置
+      viewer.value.camera.flyTo({
+        destination: elevatedPosition,
+        duration: 1.5, // 飞行时间（秒）
+        // 摄像机角度
+        orientation: {
+          heading: Cesium.Math.toRadians(0.0), // 朝向
+          pitch: Cesium.Math.toRadians(-90.0), // 俯仰角
+          roll: 0.0,
+        },
+      })
+    }
+  } else {
+    console.warn(`未找到name为 ${row.name} 的实体`)
+  }
+}
+
+// 初始化echarts
+const initEcharts = () => {
+  initStatusPieChart(statusPieData) // 初始化状态饼图
+  initPressureBarChart(pressureBarData) // 初始化压力分布柱状图
+  initPressureLineChart(avgPressureLineData) // 初始化平均压力变化折线图
+}
+onMounted(async () => {
   initCesium() // 初始化Cesium
   loadLayers() // 加载GeoJSON图层
+  await loadEcharts() // 加载echarts图表
+  initEcharts() // 初始化echarts图表
+  console.log(normalFireHydrants.value, errorFireHydrants.value)
 })
 onBeforeUnmount(() => {
   destroyCesium()
@@ -424,65 +744,234 @@ onBeforeUnmount(() => {
 <template>
   <div class="cesium-container">
     <div class="cesium-viewer" id="cesiumContainer"></div>
-    <!--
-        <div class="layer-controls">
-      <button
-        @click="switchBaseLayer('vector')"
-        :class="{ active: activeLayerType === 'vector' }"
-        class="control-btn"
-      >
-        矢量地图
-      </button>
-      <button
-        @click="switchBaseLayer('imagery')"
-        :class="{ active: activeLayerType === 'imagery' }"
-        class="control-btn"
-      >
-        影像地图
-      </button>
-    </div> -->
   </div>
-  <!-- <app-test></app-test> -->
+  <div class="leaft-info">
+    <div class="echarts">
+      <div id="status-pie-chart" style="width: 100%; height: 100%"></div>
+    </div>
+    <div class="echarts">
+      <div id="avg-pressure-line-chart" style="width: 100%; height: 100%"></div>
+    </div>
+    <div class="echarts">
+      <div id="pressure-bar-chart" style="width: 100%; height: 100%"></div>
+    </div>
+  </div>
+  <div class="right-info">
+    <div class="info-card">
+      <h3>系统信息</h3>
+      <div class="info-grid">
+        <div class="info-item">
+          <p class="info-label">正常消防栓数量</p>
+          <p class="info-value">{{ normalFireHydrants.length }}</p>
+        </div>
+        <div class="info-item">
+          <p class="info-label">压力异常消防栓数量</p>
+          <p class="info-value error">{{ errorFireHydrants.length }}</p>
+        </div>
+        <div class="info-item">
+          <p class="info-label">维修中消防栓数量</p>
+          <p class="info-value warning">
+            {{ repairingFireHydrants.length }}
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="table-card">
+      <h3>故障消防栓列表</h3>
+      <el-table :data="errorFireHydrants" style="width: 100%" height="230px">
+        <el-table-column prop="name" label="编号" min-width="100" />
+        <el-table-column
+          prop="managementUnit"
+          label="管理单位"
+          min-width="100"
+        />
+        <el-table-column prop="pressure" label="MPa" min-width="50" />
+        <el-table-column fixed="right" label="操作" min-width="50">
+          <template #default="scope">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="handleClick(scope.row)"
+            >
+              查看
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+    <div class="table-card">
+      <h3>维修消防栓信息</h3>
+      <el-table
+        :data="repairingFireHydrants"
+        style="width: 100%"
+        height="230px"
+      >
+        <el-table-column prop="name" label="编号" min-width="100" />
+        <el-table-column
+          prop="managementUnit"
+          label="管理单位"
+          min-width="100"
+        />
+        <el-table-column prop="pressure" label="MPa" min-width="50" />
+        <el-table-column fixed="right" label="操作" min-width="50">
+          <template #default="scope">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              @click="handleClick(scope.row)"
+            >
+              查看
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+  </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .cesium-container {
   position: relative;
   width: 100%;
   height: calc(100vh - 60px);
+  .cesium-viewer {
+    width: 100%;
+    height: 100%;
+  }
 }
-
-.cesium-viewer {
-  width: 100%;
-  height: 100%;
-}
-
-.layer-controls {
+.leaft-info {
+  width: 400px;
+  height: calc(100vh - 60px);
   position: absolute;
-  top: 20px;
-  right: 20px;
-  z-index: 1000;
+  top: 60px;
+  left: 0px;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+  // 渐变
+  background: linear-gradient(to right, #000c1d, #2740584d);
+  border: 1px solid var(--card-border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  padding: 10px;
+  box-sizing: border-box;
+}
+// echarts 容器
+.leaft-info .echarts {
+  flex: 1;
+  margin-bottom: 10px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
-.control-btn {
-  padding: 8px 16px;
-  background: rgba(42, 42, 42, 0.9);
+.leaft-info .echarts:last-child {
+  margin-bottom: 0;
+}
+
+.leaft-info .echarts > div {
+  flex: 1;
+}
+.right-info {
+  width: 400px;
+  height: calc(100vh - 60px);
+  position: absolute;
+  top: 60px;
+  right: 0px;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+  background: linear-gradient(to left, #000c1d, #2740584d);
+  border: 1px solid var(--card-border);
+  padding: 10px;
+  box-sizing: border-box;
   color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.right-info .info-card,
+.right-info .table-card {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 15px;
+  box-sizing: border-box;
+}
+.right-info .info-card h3,
+.right-info .table-card h3 {
+  margin: 0 0 15px 0;
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.right-info .info-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 15px;
+}
+
+.right-info .info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.right-info .info-label {
+  margin: 0;
+  color: #aaa;
   font-size: 14px;
-  transition: all 0.3s ease;
 }
 
-.control-btn:hover {
-  background: rgba(60, 60, 60, 0.9);
+.right-info .info-value {
+  margin: 0;
+  color: #fff;
+  font-size: 20px;
+  font-weight: bold;
 }
 
-.control-btn.active {
-  background: rgba(0, 96, 255, 0.9);
+.right-info .info-value.error {
+  color: #ff4d4f;
+}
+
+.right-info .info-value.warning {
+  color: #faad14;
+}
+
+// 修改表格背景颜色
+.right-info :deep(.el-table) {
+  background-color: transparent;
+  color: white;
+}
+
+.right-info :deep(.el-table__body-wrapper) {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.right-info :deep(.el-table th) {
+  background-color: rgba(0, 0, 0, 0.3);
+  color: white;
+}
+
+.right-info :deep(.el-table tr) {
+  background-color: transparent;
+  color: white;
+}
+
+.right-info :deep(.el-table .el-table__row:hover) {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #000c1d;
+}
+
+.right-info :deep(.el-table .el-table__row:nth-child(2n)) {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.right-info .table-card:last-child {
+  margin-bottom: 0;
 }
 </style>
