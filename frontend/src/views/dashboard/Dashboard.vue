@@ -75,6 +75,9 @@ const loadRoadData = async () => {
 }
 // 创建一个映射表，用于存储所有实体
 const entityMap = new Map<string, Cesium.Entity>()
+const showPopup = ref(false) // 控制弹窗显示
+const selectedHydrant = ref<FireHydrantData | null>(null) // 选中的消防栓数据
+const selectedHighlightEntity = ref<Cesium.Entity | null>(null) // 新增：跟踪高亮临时实体
 // 加载消防栓点数据
 const loadFireHydrantData = async () => {
   try {
@@ -89,6 +92,7 @@ const loadFireHydrantData = async () => {
         // 移除默认的广告牌和标签
         entity.billboard = undefined
         entity.label = undefined
+
         const currentStatus = entity.properties?.currentStatus.getValue()
         const name = entity.properties?.Name.getValue()
         const position = entity.position?.getValue(Cesium.JulianDate.now())
@@ -97,7 +101,7 @@ const loadFireHydrantData = async () => {
           entityMap.set(name, entity)
         }
         if (!position) return
-
+        // 添加点击事件
         // 确定颜色
         let pointColor = Cesium.Color.SKYBLUE
         let pulseColor = Cesium.Color.BLUE
@@ -124,7 +128,11 @@ const loadFireHydrantData = async () => {
         // 只给错误状态的消防栓添加动态扩散效果
         if (currentStatus === 'error') {
           // 创建动态扩散效果 - 使用圆形
-          const createPulseCircle = (delay: number, maxRadius: number) => {
+          const createPulseCircle = (
+            delay: number,
+            maxRadius: number,
+            loop: number,
+          ) => {
             const startTime = new Date().getTime()
 
             return new Cesium.Entity({
@@ -136,12 +144,10 @@ const loadFireHydrantData = async () => {
                   new Cesium.CallbackProperty(() => {
                     const elapsed =
                       (new Date().getTime() - startTime - delay * 1000) / 1000
-                    const progress = (elapsed % 6) / 6 // 3秒循环
+                    const progress = (elapsed % loop) / loop // 循环播放，确保在loop秒内完成一次完整的动画
 
                     // 使用更平滑的透明度过渡，避免突然消失
-                    const alpha = 0.6 * Math.sin(progress * Math.PI) // 正弦波实现平滑过渡
-
-                    // const alpha = 0.6 * (1 - progress / 0.8)
+                    const alpha = 0.2 * Math.sin(progress * Math.PI) // 正弦波实现平滑过渡
                     return pulseColor.withAlpha(alpha)
                   }, false),
                 ),
@@ -152,15 +158,15 @@ const loadFireHydrantData = async () => {
             })
           }
 
-          // 更密集的脉冲环（8个）
-          dataSource.entities.add(createPulseCircle(0, 6))
-          dataSource.entities.add(createPulseCircle(0.3, 9))
-          dataSource.entities.add(createPulseCircle(0.6, 12))
-          dataSource.entities.add(createPulseCircle(0.9, 15))
-          dataSource.entities.add(createPulseCircle(1.2, 18))
-          dataSource.entities.add(createPulseCircle(1.5, 21))
-          dataSource.entities.add(createPulseCircle(1.8, 24))
-          dataSource.entities.add(createPulseCircle(2.1, 27))
+          // 更均匀的脉冲环（8个），调整延迟步进为0.75以优化动画流畅度
+          dataSource.entities.add(createPulseCircle(0, 6, 6))
+          dataSource.entities.add(createPulseCircle(0.75, 9, 6))
+          dataSource.entities.add(createPulseCircle(1.5, 12, 6))
+          dataSource.entities.add(createPulseCircle(2.25, 15, 6))
+          dataSource.entities.add(createPulseCircle(3.0, 18, 6))
+          dataSource.entities.add(createPulseCircle(3.75, 21, 6))
+          dataSource.entities.add(createPulseCircle(4.5, 24, 6))
+          dataSource.entities.add(createPulseCircle(5.25, 27, 6))
         }
 
         // 给错误和维修状态的点加标签
@@ -569,6 +575,8 @@ const initPressureLineChart = (
   const option = {
     title: {
       text: '平均压力变化折线图',
+      // 副标题
+      subtext: '(模拟数据)',
       left: 'center',
       textStyle: {
         fontSize: 14,
@@ -622,19 +630,36 @@ const initPressureLineChart = (
   }
   avgPressureLineChart.value?.setOption(option)
 }
-// -------------------------- 工具函数：状态中文映射 --------------------------
-// const getStatusText = (status: string) => {
-//   switch (status) {
-//     case 'normal':
-//       return '正常'
-//     case 'error':
-//       return '压力异常'
-//     case 'repairing':
-//       return '维修中'
-//     default:
-//       return '未知'
-//   }
-// }
+/**
+ *  高亮效果
+ * @param entity   Cesium.Entity
+ */
+const addHightlight = (entity: Cesium.Entity) => {
+  // 创建高亮临时实体（复制位置，设置高亮样式）
+  const position = entity.position?.getValue(Cesium.JulianDate.now())
+  if (position) {
+    const highlightEntity = new Cesium.Entity({
+      position: position,
+      point: new Cesium.PointGraphics({
+        color: Cesium.Color.fromCssColorString('#339af0'), // 高亮颜色
+        pixelSize: 32, // 增大点大小
+        outlineColor: Cesium.Color.WHITE, // 白色轮廓
+        outlineWidth: 1, // 加粗轮廓
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      }),
+    })
+    viewer.value?.entities.add(highlightEntity)
+    selectedHighlightEntity.value = highlightEntity
+  }
+}
+const removeHightlight = () => {
+  // 先移除之前的高亮临时实体（如果存在）
+  if (selectedHighlightEntity.value) {
+    viewer.value?.entities.remove(selectedHighlightEntity.value)
+    selectedHighlightEntity.value = null
+  }
+}
 /**
  * 初始化Cesium Viewer
  */
@@ -646,13 +671,82 @@ const initCesium = async () => {
     baseLayerPicker: false, // 禁用图层选择器
     navigationHelpButton: false, // 禁用导航帮助
     sceneModePicker: false, // 禁用场景模式切换
-    infoBox: false, // 保留信息框（点击实体看详情）
+    infoBox: false, // 信息框（点击实体看详情）
     vrButton: false, // 禁用VR按钮
+    selectionIndicator: false, // 禁用选中指示器（绿色框）
   })
   // 关闭抗锯齿
   viewer.value.scene.postProcessStages.fxaa.enabled = false
   // 添加Mapbox底图
   viewer.value.imageryLayers.addImageryProvider(mapboxImageryProvider)
+
+  // 添加自定义点击事件处理
+  const handler = new Cesium.ScreenSpaceEventHandler(viewer.value.scene.canvas)
+
+  handler.setInputAction(
+    (event: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      // const pickedObject = viewer.value?.scene.pick(event.position)
+      // 使用 drillPick 来获取所有重叠的对象，按深度排序
+      const pickedObjects = viewer.value?.scene.drillPick(event.position) || []
+
+      let foundHydrant = false // 标记是否找到消防栓
+      for (const picked of pickedObjects) {
+        const entity = picked.id as Cesium.Entity | undefined
+        if (entity && entity.properties && entity.properties.Name) {
+          // 检查是否是消防栓实体（有 Name 属性）
+          const properties = entity.properties
+          // 先移除之前的高亮临时实体（如果存在）
+          removeHightlight()
+          // 创建高亮临时实体（复制位置，设置高亮样式）
+          addHightlight(entity)
+          // 更新选中的消防栓数据
+          selectedHydrant.value = {
+            id: properties?.FID?.getValue(),
+            name: properties?.Name?.getValue(),
+            status: properties?.currentStatus?.getValue(),
+            pressure: properties?.currentPressure?.getValue(),
+            managementUnit: properties?.managementUnit?.getValue(),
+          }
+          const position = entity.position?.getValue(Cesium.JulianDate.now())
+          // 显示弹窗
+          showPopup.value = true
+
+          // 飞到正上方俯瞰
+          if (position) {
+            const cartographic = Cesium.Cartographic.fromCartesian(position)
+            const elevatedPosition = Cesium.Cartesian3.fromRadians(
+              cartographic.longitude,
+              cartographic.latitude,
+              cartographic.height + 500, // 300米高度俯瞰
+            )
+
+            viewer.value?.camera.flyTo({
+              destination: elevatedPosition,
+              duration: 1.5,
+              orientation: {
+                heading: Cesium.Math.toRadians(0.0),
+                pitch: Cesium.Math.toRadians(-90.0), // 正上方俯瞰
+                roll: 0.0,
+              },
+            })
+          }
+
+          foundHydrant = true
+          break // 找到第一个消防栓后停止循环
+        }
+      }
+
+      if (!foundHydrant) {
+        // 如果没有找到消防栓，关闭弹窗
+        showPopup.value = false
+        if (selectedHighlightEntity.value) {
+          viewer.value?.entities.remove(selectedHighlightEntity.value)
+          selectedHighlightEntity.value = null
+        }
+      }
+    },
+    Cesium.ScreenSpaceEventType.LEFT_CLICK,
+  )
   flyToInitialView() // 飞到初始视角
 }
 
@@ -695,9 +789,22 @@ const handleClick = (row: FireHydrantData) => {
   // 根据name查找实体
   const entity = entityMap.get(row.name)
   if (entity && viewer.value) {
-    // 获取实体位置
+    const properties = entity.properties
+    // 先移除之前的高亮临时实体（如果存在）
+    removeHightlight()
+    // 创建高亮临时实体（复制位置，设置高亮样式）
+    addHightlight(entity)
+    // 更新选中的消防栓数据
+    selectedHydrant.value = {
+      id: properties?.FID?.getValue(),
+      name: properties?.Name?.getValue(),
+      status: properties?.currentStatus?.getValue(),
+      pressure: properties?.currentPressure?.getValue(),
+      managementUnit: properties?.managementUnit?.getValue(),
+    }
+    // 显示弹窗
+    showPopup.value = true
     const position = entity.position?.getValue(Cesium.JulianDate.now())
-
     if (position) {
       // 将贴地点位转换为Cartographic格式添加高度
       const cartographic = Cesium.Cartographic.fromCartesian(position)
@@ -744,6 +851,29 @@ onBeforeUnmount(() => {
 <template>
   <div class="cesium-container">
     <div class="cesium-viewer" id="cesiumContainer"></div>
+    <!-- 消防栓信息弹窗 -->
+    <div v-if="showPopup && selectedHydrant" class="hydrant-popup">
+      <div class="popup-content">
+        <h3>消防栓信息</h3>
+        <div class="info-row">
+          <span class="label">编号:</span>
+          <span class="value">{{ selectedHydrant.name }}</span>
+        </div>
+        <div class="info-row">
+          <span class="label">状态:</span>
+          <span class="value">{{ selectedHydrant.status }}</span>
+        </div>
+        <div class="info-row">
+          <span class="label">压力:</span>
+          <span class="value">{{ selectedHydrant.pressure }} MPa</span>
+        </div>
+        <div class="info-row">
+          <span class="label">管理单位:</span>
+          <span class="value">{{ selectedHydrant.managementUnit }}</span>
+        </div>
+        <button class="close-btn" @click="showPopup = false">x</button>
+      </div>
+    </div>
   </div>
   <div class="leaft-info">
     <div class="echarts">
@@ -849,32 +979,22 @@ onBeforeUnmount(() => {
   left: 0px;
   z-index: 100;
   backdrop-filter: blur(10px);
-  // 渐变
   background: linear-gradient(to right, #000c1d, #2740584d);
   border: 1px solid var(--card-border);
   display: flex;
   flex-direction: column;
   padding: 10px;
   box-sizing: border-box;
-}
-// echarts 容器
-.leaft-info .echarts {
-  flex: 1;
-  margin-bottom: 10px;
-  background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-  padding: 0;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-}
-
-.leaft-info .echarts:last-child {
-  margin-bottom: 0;
-}
-
-.leaft-info .echarts > div {
-  flex: 1;
+  .echarts {
+    flex: 1;
+    margin-bottom: 10px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+  }
 }
 .right-info {
   width: 400px;
@@ -892,86 +1012,114 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  .info-card,
+  .table-card {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 15px;
+    box-sizing: border-box;
+    h3 {
+      margin: 0 0 15px 0;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+    }
+  }
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  .info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .info-label {
+    margin: 0;
+    color: #aaa;
+    font-size: 14px;
+  }
+  .info-value {
+    margin: 0;
+    color: #fff;
+    font-size: 20px;
+    font-weight: bold;
+  }
+  .info-value.error {
+    color: #ff4d4f;
+  }
+  .info-value.warning {
+    color: #faad14;
+  }
+  // element-ui el-table样式
+  :deep(.el-table) {
+    background-color: transparent;
+    color: white;
+  }
+  :deep(.el-table__body-wrapper) {
+    background-color: rgba(0, 0, 0, 0.2);
+  }
+  :deep(.el-table th) {
+    background-color: rgba(0, 0, 0, 0.3);
+    color: white;
+  }
+  :deep(.el-table tr) {
+    background-color: transparent;
+    color: white;
+  }
+  :deep(.el-table .el-table__row:hover) {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #000c1d;
+  }
 }
-
-.right-info .info-card,
-.right-info .table-card {
-  background-color: rgba(0, 0, 0, 0.2);
+.hydrant-popup {
+  position: absolute;
+  top: 20%;
+  right: 400px;
+  transform: translate(-50%, -50%);
+  background: #0b192748;
   border-radius: 8px;
-  padding: 15px;
-  box-sizing: border-box;
-}
-.right-info .info-card h3,
-.right-info .table-card h3 {
-  margin: 0 0 15px 0;
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
-}
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  padding: 20px;
+  min-width: 250px;
+  z-index: 1000;
+  .popup-content h3 {
+    margin: 0 0 15px 0;
+    color: #fff;
+    text-align: center;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f0f0f0;
+    .label {
+      font-weight: bold;
+      color: #fff;
+    }
+    .value {
+      color: #fff;
+    }
+  }
+  .close-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    background: #0b1927;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: center;
+    line-height: 20px;
+  }
 
-.right-info .info-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 15px;
-}
-
-.right-info .info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.right-info .info-label {
-  margin: 0;
-  color: #aaa;
-  font-size: 14px;
-}
-
-.right-info .info-value {
-  margin: 0;
-  color: #fff;
-  font-size: 20px;
-  font-weight: bold;
-}
-
-.right-info .info-value.error {
-  color: #ff4d4f;
-}
-
-.right-info .info-value.warning {
-  color: #faad14;
-}
-
-// 修改表格背景颜色
-.right-info :deep(.el-table) {
-  background-color: transparent;
-  color: white;
-}
-
-.right-info :deep(.el-table__body-wrapper) {
-  background-color: rgba(0, 0, 0, 0.2);
-}
-
-.right-info :deep(.el-table th) {
-  background-color: rgba(0, 0, 0, 0.3);
-  color: white;
-}
-
-.right-info :deep(.el-table tr) {
-  background-color: transparent;
-  color: white;
-}
-
-.right-info :deep(.el-table .el-table__row:hover) {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #000c1d;
-}
-
-.right-info :deep(.el-table .el-table__row:nth-child(2n)) {
-  background-color: rgba(0, 0, 0, 0.1);
-}
-
-.right-info .table-card:last-child {
-  margin-bottom: 0;
+  .close-btn:hover {
+    background: #40a9ff;
+  }
 }
 </style>
