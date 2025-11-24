@@ -40,14 +40,17 @@ const router = createRouter({
             {
               path: 'hydrantlist',
               name: 'HydrantList',
-              component: () =>
-                import('@/views/console/list/HydrantList.vue'),
+              component: () => import('@/views/console/list/HydrantList.vue'),
+            },
+            {
+              path: 'testtlist',
+              name: 'testtlist',
+              component: () => import('@/views/console/list/TestList.vue'),
             },
             {
               path: 'userlist',
               name: 'userlist',
-              component: () =>
-                import('@/views/console/list/UserList.vue'),
+              component: () => import('@/views/console/list/UserList.vue'),
             },
           ],
         },
