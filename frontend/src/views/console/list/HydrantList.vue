@@ -282,7 +282,7 @@ const getClickFeature = (e: mapboxgl.MapMouseEvent) => {
     zoom: 17,
   })
 }
-// 监听点击事件，获取点击的要素
+// 点击要素 - 显示弹窗信息
 const handleFeatureClickInfo = (e: mapboxgl.MapMouseEvent) => {
   getClickFeature(e)
   showFeaturePopup.value = true
@@ -311,7 +311,19 @@ const statusText = computed(() => {
       return '编辑模式: 选择操作'
   }
 })
-
+// 辅助函数
+const getModeText = (mode: string) => {
+  switch (mode) {
+    case 'addFeature':
+      return '添加要素'
+    case 'updateFeature':
+      return '更新要素'
+    case 'deleteFeature':
+      return '删除要素'
+    default:
+      return ''
+  }
+}
 // 更新鼠标样式
 const updateMapCursor = () => {
   if (!map) return
@@ -403,19 +415,6 @@ const saveChanges = () => {
   ElMessage.success('更改已保存')
 }
 
-// 辅助函数
-const getModeText = (mode: string) => {
-  switch (mode) {
-    case 'addFeature':
-      return '添加要素'
-    case 'updateFeature':
-      return '更新要素'
-    case 'deleteFeature':
-      return '删除要素'
-    default:
-      return ''
-  }
-}
 //------------------定义初始化地图的函数---------------------
 const initMap = () => {
   map = new mapboxgl.Map({
@@ -440,18 +439,19 @@ const initMap = () => {
   // 鼠标移动进入要素图层修改样式
   map.on('mouseenter', 'sdjzdx_FireHydranty_PointLayer', () => {
     if (!map) return
+    // 非编辑模式下，要素上显示pointer
+    if (!isEditingMode.value) {
+      map.getCanvas().style.cursor = 'pointer'
+      return
+    }
     // 编辑模式下，更新和删除模式需要在要素上显示pointer
-    // 编辑模式下，添加模式需要保持十字样式不变
     if (
-      isEditingMode.value &&
-      (editingMode.value === 'updateFeature' ||
-        editingMode.value === 'deleteFeature')
+      editingMode.value === 'updateFeature' ||
+      editingMode.value === 'deleteFeature'
     ) {
       map.getCanvas().style.cursor = 'pointer'
-    } // 非编辑模式下，要素上显示pointer
-    else if (!isEditingMode.value) {
-      map.getCanvas().style.cursor = 'pointer'
     }
+    // 编辑模式下，添加模式保持十字样式不变（不处理）
   })
   // 鼠标移出图层恢复样式
   map.on('mouseleave', 'sdjzdx_FireHydranty_PointLayer', () => {
@@ -465,16 +465,16 @@ const initMap = () => {
       // 如果当前是编辑模式，则处理要素点击逻辑
       switch (editingMode.value) {
         case 'updateFeature':
-          // 更新要素逻辑
           console.log('更新要素逻辑')
+          // 更新要素逻辑
           break
         case 'deleteFeature':
-          // 删除要素逻辑
           console.log('删除要素逻辑')
+          // 删除要素逻辑
           break
         case 'addFeature':
-          // 添加要素逻辑
           ElMessage.error('此位置已有消防栓要素！')
+          // 添加要素逻辑
           break
         default:
           // 其他模式逻辑
@@ -493,13 +493,18 @@ const initMap = () => {
     const features = map.queryRenderedFeatures(e.point, {
       layers: ['sdjzdx_FireHydranty_PointLayer'],
     })
+    // 如果有要素，不处理地图点击（要素点击事件已处理）
     if (features.length > 0) {
       return
-    } else if (editingMode.value === 'addFeature') {
-      console.log('添加要素逻辑')
-    } else {
-      showFeaturePopup.value = false
     }
+    // 添加模式下在空白区域点击
+    if (editingMode.value === 'addFeature') {
+      console.log('添加要素逻辑')
+      // 执行添加要素的具体逻辑
+      return
+    }
+    // 其他情况下隐藏要素信息弹窗
+    showFeaturePopup.value = false
   })
 }
 
