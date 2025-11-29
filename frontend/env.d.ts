@@ -5,6 +5,7 @@ import type { ElMessage } from 'element-plus' // eslint-disable-line @typescript
 // 声明全局变量 ElMessage
 declare global {
   const ElMessage: typeof ElMessage
+  const ElMessageBox: typeof ElMessage
 }
 
 export {}

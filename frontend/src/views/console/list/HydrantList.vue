@@ -1,9 +1,9 @@
 <script lang="ts" setup>
-import { onMounted, ref, onUnmounted } from 'vue'
+import { onMounted, ref, onUnmounted, computed } from 'vue'
 import type { StyleSpecification } from 'mapbox-gl'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { GetFeatures } from '@/api/geoserver' //geoserver要素API
+import { GetFeaturesAPI } from '@/api/geoserver' //geoserver要素API
 // 导入环境变量（Vite项目）
 const tiandituToken = import.meta.env.VITE_TIANDITU_TOKEN
 const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN
@@ -194,7 +194,7 @@ const addGeoJSONLayer = async (layerName: string) => {
       map.removeSource(layerName)
     }
     // 获取GeoJSON数据
-    const Geojson = await GetFeatures(layerName)
+    const Geojson = await GetFeaturesAPI(layerName)
     FireHydrantGeojson.value = Geojson
     console.log(Geojson)
     // 添加GeoJSON数据源和图层
@@ -263,16 +263,12 @@ const formatStatus = (status: string) => {
       return status || '未知状态'
   }
 }
-
-// 监听点击事件，获取点击的要素
-const handleFeatureClick = (
-  e: mapboxgl.MapMouseEvent & { features?: GeoJSON.Feature[] },
-) => {
+// 获取点击的要素
+const getClickFeature = (e: mapboxgl.MapMouseEvent) => {
   if (!e.features) return
   const feature = e.features[0] // 获取点击的要素
   if (!feature) return
   selectedFeature.value = feature // 保存点击的要素
-
   popupFormaData.value = {
     name: feature.properties?.Name,
     currentPressure: formatPressure(feature.properties?.currentPressure),
@@ -280,11 +276,145 @@ const handleFeatureClick = (
     installationDate: feature.properties?.installationDate,
     managementUnit: feature.properties?.managementUnit,
   }
-  showFeaturePopup.value = true
+
   map?.flyTo({
     center: e.lngLat,
     zoom: 17,
   })
+}
+// 监听点击事件，获取点击的要素
+const handleFeatureClickInfo = (e: mapboxgl.MapMouseEvent) => {
+  getClickFeature(e)
+  showFeaturePopup.value = true
+}
+//  ------------------GeoJSON数据编辑功能---------------------
+// 状态变量
+const isEditingMode = ref(false) // 编辑模式
+const editingMode = ref('') // 编辑模式名称
+
+// const EditingGeoJsonData = ref() // 正在编辑的GeoJSON数据
+// const EditingFeature = ref() // 正在编辑的要素
+
+// 计算属性，状态文本信息
+const statusText = computed(() => {
+  if (!isEditingMode.value) {
+    return '未启用编辑'
+  }
+  switch (editingMode.value) {
+    case 'addFeature':
+      return '编辑模式: 添加要素'
+    case 'updateFeature':
+      return '编辑模式: 更新要素'
+    case 'deleteFeature':
+      return '编辑模式: 删除要素'
+    default:
+      return '编辑模式: 选择操作'
+  }
+})
+
+// 更新鼠标样式
+const updateMapCursor = () => {
+  if (!map) return
+  // 非编辑模式，使用地图默认样式（张开小手）
+  if (!isEditingMode.value) {
+    map.getCanvas().style.cursor = '' // 默认样式
+    return
+  }
+  // 编辑模式，根据模式名称更新鼠标样式
+  switch (editingMode.value) {
+    case 'addFeature':
+      map.getCanvas().style.cursor = 'crosshair' // 添加十字准星
+      break
+    case 'updateFeature':
+    case 'deleteFeature':
+      map.getCanvas().style.cursor = 'default' // 更新和删除，箭头样式
+      break
+    default:
+      map.getCanvas().style.cursor = 'default' // 编辑模式但未选择具体功能，箭头
+      break
+  }
+}
+// 切换是否开启编辑模式
+const toggleEditMode = async () => {
+  if (!map) return
+  if (isEditingMode.value) {
+    // 如果当前有活动编辑模式，提示确认退出
+    if (editingMode.value) {
+      try {
+        await ElMessageBox.confirm(
+          `当前正在${getModeText(editingMode.value)}，退出编辑模式将丢失未保存的更改，是否确认退出？`,
+          '确认退出',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning',
+          },
+        )
+        isEditingMode.value = false
+        editingMode.value = ''
+        ElMessage.success('已退出编辑模式')
+      } catch {
+        return
+      }
+    } else {
+      isEditingMode.value = false
+      ElMessage.success('已退出编辑模式')
+    }
+  } else {
+    isEditingMode.value = true
+    ElMessage.success('已进入编辑模式')
+  }
+  updateMapCursor()
+}
+// 切换编辑模式
+const switchEditingMode = async (newMode: string) => {
+  // 如果切换的是当前模式，则退出该模式
+  if (editingMode.value === newMode) {
+    editingMode.value = ''
+    ElMessage.info(`已退出${getModeText(newMode)}模式`)
+    return
+  }
+  // 如果当前有其他活动模式，提示确认切换
+  if (editingMode.value && editingMode.value !== newMode) {
+    try {
+      await ElMessageBox.confirm(
+        `当前正在${getModeText(editingMode.value)}，切换模式将丢失未保存的更改，是否确认切换？`,
+        '确认切换',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
+      )
+      editingMode.value = newMode
+      ElMessage.success(`已切换到${getModeText(newMode)}模式`)
+    } catch {
+      // 用户取消操作
+      return
+    }
+  } else {
+    editingMode.value = newMode
+    ElMessage.success(`已进入${getModeText(newMode)}模式`)
+  }
+  updateMapCursor()
+}
+
+const saveChanges = () => {
+  ElMessage.success('更改已保存')
+}
+
+// 辅助函数
+const getModeText = (mode: string) => {
+  switch (mode) {
+    case 'addFeature':
+      return '添加要素'
+    case 'updateFeature':
+      return '更新要素'
+    case 'deleteFeature':
+      return '删除要素'
+    default:
+      return ''
+  }
 }
 //------------------定义初始化地图的函数---------------------
 const initMap = () => {
@@ -307,19 +437,69 @@ const initMap = () => {
       lat: parseFloat(e.lngLat.lat.toFixed(4)),
     }
   })
-  // 鼠标移动到图层修改样式
-  map.on('mousemove', 'sdjzdx_FireHydranty_PointLayer', () => {
+  // 鼠标移动进入要素图层修改样式
+  map.on('mouseenter', 'sdjzdx_FireHydranty_PointLayer', () => {
     if (!map) return
-    map.getCanvas().style.cursor = 'pointer'
+    // 编辑模式下，更新和删除模式需要在要素上显示pointer
+    // 编辑模式下，添加模式需要保持十字样式不变
+    if (
+      isEditingMode.value &&
+      (editingMode.value === 'updateFeature' ||
+        editingMode.value === 'deleteFeature')
+    ) {
+      map.getCanvas().style.cursor = 'pointer'
+    } // 非编辑模式下，要素上显示pointer
+    else if (!isEditingMode.value) {
+      map.getCanvas().style.cursor = 'pointer'
+    }
   })
   // 鼠标移出图层恢复样式
   map.on('mouseleave', 'sdjzdx_FireHydranty_PointLayer', () => {
     if (!map) return
-    map.getCanvas().style.cursor = ''
+    // 移出要素时，恢复为当前编辑模式设置的样式
+    updateMapCursor()
   })
   // 鼠标点击要素
   map.on('click', 'sdjzdx_FireHydranty_PointLayer', (e) => {
-    handleFeatureClick(e)
+    if (isEditingMode.value) {
+      // 如果当前是编辑模式，则处理要素点击逻辑
+      switch (editingMode.value) {
+        case 'updateFeature':
+          // 更新要素逻辑
+          console.log('更新要素逻辑')
+          break
+        case 'deleteFeature':
+          // 删除要素逻辑
+          console.log('删除要素逻辑')
+          break
+        case 'addFeature':
+          // 添加要素逻辑
+          ElMessage.error('此位置已有消防栓要素！')
+          break
+        default:
+          // 其他模式逻辑
+          break
+      }
+    } else {
+      // 如果当前不是编辑模式，则处理要素点击逻辑
+      console.log('要素点击事件')
+      handleFeatureClickInfo(e)
+    }
+  })
+  // 地图点击事件
+  map.on('click', (e) => {
+    if (!map) return
+    // 检查点击位置是否有sdjzdx_FireHydranty_PointLayer 图层要素
+    const features = map.queryRenderedFeatures(e.point, {
+      layers: ['sdjzdx_FireHydranty_PointLayer'],
+    })
+    if (features.length > 0) {
+      return
+    } else if (editingMode.value === 'addFeature') {
+      console.log('添加要素逻辑')
+    } else {
+      showFeaturePopup.value = false
+    }
   })
 }
 
@@ -339,11 +519,51 @@ onUnmounted(() => {
 <template>
   <div>
     <div ref="mapContainer" class="map-container"></div>
-    <div class="layercontroller">
-      <button @click="toggleLayer">
-        切换到{{ currentLayerType === 'vector' ? '影像' : '矢量' }}图层
-      </button>
+
+    <!-- 编辑工具容器 -->
+    <div class="edit-controls">
+      <!-- 状态显示和编辑开关区域 - 始终显示 -->
+      <div class="control-header">
+        <el-button
+          :type="isEditingMode ? 'danger' : 'primary'"
+          @click="toggleEditMode"
+        >
+          {{ isEditingMode ? '结束编辑' : '开始编辑' }}
+        </el-button>
+        <span class="status-text">{{ statusText }}</span>
+      </div>
+      <!-- 编辑工具区域 -->
+      <div v-if="isEditingMode" class="edit-tools">
+        <el-button type="success" @click="saveChanges"> 保存更改 </el-button>
+        <el-button
+          :type="editingMode === 'addFeature' ? 'danger' : 'primary'"
+          @click="switchEditingMode('addFeature')"
+        >
+          {{ editingMode === 'addFeature' ? '结束添加' : '添加要素' }}
+        </el-button>
+
+        <el-button
+          :type="editingMode === 'updateFeature' ? 'danger' : 'primary'"
+          @click="switchEditingMode('updateFeature')"
+        >
+          {{ editingMode === 'updateFeature' ? '结束更新' : '更新要素' }}
+        </el-button>
+
+        <el-button
+          :type="editingMode === 'deleteFeature' ? 'danger' : 'primary'"
+          @click="switchEditingMode('deleteFeature')"
+        >
+          {{ editingMode === 'deleteFeature' ? '结束删除' : '删除要素' }}
+        </el-button>
+      </div>
     </div>
+    <!-- 工具箱区域  图层切换 编辑工具-->
+    <div class="layercontroller">
+      <el-button type="primary" @click="toggleLayer">
+        切换{{ currentLayerType === 'vector' ? '影像' : '矢量' }}
+      </el-button>
+    </div>
+
     <!-- 简化信息 -->
     <div class="infocard">
       <span>鼠标位置: {{ mousePosition.lng }}, {{ mousePosition.lat }}</span>
@@ -373,11 +593,6 @@ onUnmounted(() => {
   height: calc(100vh - 60px);
   width: calc(100vw - 200px);
 }
-.layercontroller {
-  position: absolute;
-  top: 70px;
-  right: 10px;
-}
 .infocard {
   position: absolute;
   bottom: 5px;
@@ -404,6 +619,41 @@ onUnmounted(() => {
   .popup-item {
     display: block;
     margin-bottom: 10px;
+  }
+}
+// 图层切换样式
+.layercontroller {
+  position: absolute;
+  top: 70px;
+  right: 10px;
+}
+// 编辑功能样式
+.edit-controls {
+  position: absolute;
+  top: 70px;
+  left: 220px;
+  width: auto;
+  z-index: 1000;
+
+  // 状态显示和编辑开关区域
+  .control-header {
+    display: flex;
+    margin-bottom: 10px;
+    line-height: 30px;
+    gap: 10px;
+    .status-text {
+      font-size: 14px;
+      color: #606266;
+      white-space: nowrap;
+    }
+  }
+
+  // 编辑工具区域
+  .edit-tools {
+    background-color: #ffffff98;
+    border-radius: 5px;
+    display: flex;
+    gap: 8px;
   }
 }
 </style>

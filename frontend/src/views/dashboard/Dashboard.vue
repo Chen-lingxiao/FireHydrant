@@ -2,7 +2,7 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import * as Cesium from 'cesium'
 import * as echarts from 'echarts'
-import { GetFeatures } from '@/api/geoserver.ts'
+import { GetFeaturesAPI } from '@/api/geoserver.ts'
 
 // 定义GeoJSON要素类型
 interface GeoJsonFeature {
@@ -41,7 +41,7 @@ const mapboxImageryProvider = new Cesium.UrlTemplateImageryProvider({
 // 加载geojson数据
 const getGeojson = async (layerName: string) => {
   try {
-    const response = await GetFeatures(layerName)
+    const response = await GetFeaturesAPI(layerName)
     // console.log('GeoJSON数据：', response)
     return response
   } catch (error) {

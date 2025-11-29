@@ -7,13 +7,15 @@ const LAYER_INFO = {
   workspace: 'sdjzdx', // 工作区名称
   namespace: 'http://localhost:8085/geoserver/sdjzdx', // 工作区命名空间（需与GeoServer一致）
   geomField: 'geom', // 几何字段名
+
+  // --------------------------wfs 服务------------------------------------
 }
 // 从GeoServer加载要素数据
 /**
  * @param none
  * @returns GeoJSON.FeatureCollection
  */
-export const GetFeatures = async (layerName: string) => {
+export const GetFeaturesAPI = async (layerName: string) => {
   const url = `${LAYER_INFO.baseURL}/wfs`
   // WFS GetFeature请求参数
   const params = {
@@ -37,5 +39,129 @@ export const GetFeatures = async (layerName: string) => {
   } catch (error) {
     console.error('加载要素失败:', error)
     throw error
+  }
+}
+//----------------------------wfs-t服务------------------------------------
+/**
+ * @param features 要素数据
+ * @param operation 操作类型
+ * @param layerName 图层名称
+ * @returns
+ */
+export const EditPointFeaturesAPI = async (
+  features: GeoJSON.Feature[], // 要素数据
+  operation: 'insert' | 'update' | 'delete', // 操作类型
+  layerName: string, // 图层名称
+) => {
+  if (!features || !features.length) {
+    console.error('请提供有效的要素数据')
+    return
+  }
+  const url = `${LAYER_INFO.baseURL}/wfs` // WFS-T服务地址
+  let TransactionFragments = '' // 存储WFS-T事务片段
+  switch (operation) {
+    case 'insert': // 插入要素操作
+      TransactionFragments = features
+        .map((feature) => {
+          if (
+            feature.geometry.type !== 'Point' ||
+            !feature.geometry.coordinates
+          ) {
+            return ''
+          }
+          // GeoJSON Point 的 coordinates: [经度, 纬度] 格式（数组）
+          // GML 的 gml:pos: "经度 纬度" 格式（字符串，空格分隔）
+          const pos = feature.geometry.coordinates.join(' ')
+          console.log('pos', pos)
+          return `
+          <wfs:Insert>
+            <${LAYER_INFO.workspace}:${layerName}>
+              <${LAYER_INFO.workspace}:${LAYER_INFO.geomField}>
+                <gml:Point srsName="EPSG:4326">
+                  <gml:pos>${pos}</gml:pos>
+                </gml:Point>
+              </${LAYER_INFO.workspace}:${LAYER_INFO.geomField}>
+              <!-- 以下是属性字段 -->
+              <${LAYER_INFO.workspace}:Name>${feature.properties?.Name}</${LAYER_INFO.workspace}:Name>
+              <${LAYER_INFO.workspace}:currentStatus>${feature.properties?.currentStatus}</${LAYER_INFO.workspace}:currentStatus>
+              <${LAYER_INFO.workspace}:currentPressure>${feature.properties?.currentPressure}</${LAYER_INFO.workspace}:currentPressure>
+              <${LAYER_INFO.workspace}:managementUnit>${feature.properties?.managementUnit}</${LAYER_INFO.workspace}:managementUnit>
+              <${LAYER_INFO.workspace}:installationDate>${feature.properties?.installationDate}</${LAYER_INFO.workspace}:installationDate>
+            </${LAYER_INFO.workspace}:${layerName}>
+          </wfs:Insert>`
+        })
+        .join('') // 拼接WFS-T事务片段
+      break
+    case 'update': // 更新要素操作
+      TransactionFragments = features
+        .map((feature) => {
+          if (feature.geometry.type !== 'Point' || !feature.properties)
+            // 缺少 geometry 或 properties
+            return ''
+          const id = feature.id // 要素id
+          return `
+            <wfs:Update typeName="${LAYER_INFO.workspace}:${layerName}">
+              <wfs:Property>
+                <wfs:Name>Name</wfs:Name>
+                <wfs:Value>${feature.properties?.Name}</wfs:Value>
+              </wfs:Property>
+              <wfs:Property>
+                <wfs:Name>currentStatus</wfs:Name>
+                <wfs:Value>${feature.properties?.currentStatus}</wfs:Value>
+              </wfs:Property>
+              <wfs:Property>
+                <wfs:Name>currentPressure</wfs:Name>
+                <wfs:Value>${feature.properties?.currentPressure}</wfs:Value>
+              </wfs:Property>
+              <wfs:Property>
+                <wfs:Name>managementUnit</wfs:Name>
+                <wfs:Value>${feature.properties?.managementUnit}</wfs:Value>
+              </wfs:Property>
+              <wfs:Property>
+                <wfs:Name>installationDate</wfs:Name>
+                <wfs:Value>${feature.properties?.installationDate}</wfs:Value>
+              </wfs:Property>
+              <wfs:Property>
+                <wfs:Name>managementUserNo</wfs:Name>
+                <wfs:Value>${feature.properties?.installationDate}</wfs:Value>
+              </wfs:Property>
+              <!-- 定位要更新的要素：通过 ID 过滤 -->
+              <ogc:Filter>
+                <ogc:FeatureId fid="fire_hydrants.${id}"/>
+              </ogc:Filter>
+            </wfs:Update>
+            `
+        })
+        .join('')
+      break
+    case 'delete': // 删除要素操作
+      break
+  }
+  // 如果没有WFS-T事务片段
+  if (!TransactionFragments) {
+    console.error('请提供有效的WFS-T事务片段')
+    return
+  }
+  // 构建事务请求xml
+  const wfsTransaction = `
+    <wfs:Transaction service="WFS" version="1.0.0"
+      xmlns:wfs="http://www.opengis.net/wfs"
+      xmlns:gml="http://www.opengis.net/gml"
+       xmlns:${LAYER_INFO.workspace}="${LAYER_INFO.namespace}"
+      ${TransactionFragments}
+    </wfs:Transaction>
+  `
+  console.log('wfs服务请求xml', wfsTransaction)
+  try {
+    const response = await axios.post(url, wfsTransaction, {
+      headers: {
+        'Content-Type': 'text/xml', // 请求数据类型为XML
+        Accept: 'application/xml', // 响应数据类型为XML
+      },
+    })
+    console.log(`WFS-T${operation}响应:`, response.data)
+    return response.data
+  } catch (error) {
+    console.error('执行WFS-T事务失败:', error)
   }
 }
