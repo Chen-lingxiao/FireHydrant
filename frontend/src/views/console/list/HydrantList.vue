@@ -3,16 +3,16 @@ import { onMounted, ref, onUnmounted, computed } from 'vue'
 import type { StyleSpecification } from 'mapbox-gl'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { GetFeaturesAPI } from '@/api/geoserver' //geoserver要素API
+import { GetFeaturesAPI, EditPointFeaturesAPI } from '@/api/geoserver' //geoserver要素API
 // 导入环境变量（Vite项目）
 const tiandituToken = import.meta.env.VITE_TIANDITU_TOKEN
-const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN
-mapboxgl.accessToken = mapboxToken //设置Mapbox访问令牌
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
+
 const mapContainer = ref<HTMLDivElement | null>(null) //地图容器引用
 let map: mapboxgl.Map | null = null // Mapbox地图实例引用
 const currentLayerType = ref<TiandituMapType>('vector')
 // GeoJSON数据
-const FireHydrantGeojson = ref<GeoJSON.FeatureCollection>({
+const fireHydrantGeojson = ref<GeoJSON.FeatureCollection>({
   type: 'FeatureCollection',
   features: [],
 })
@@ -195,7 +195,7 @@ const addGeoJSONLayer = async (layerName: string) => {
     }
     // 获取GeoJSON数据
     const Geojson = await GetFeaturesAPI(layerName)
-    FireHydrantGeojson.value = Geojson
+    fireHydrantGeojson.value = Geojson
     console.log(Geojson)
     // 添加GeoJSON数据源和图层
     map.addSource(layerName, {
@@ -292,9 +292,6 @@ const handleFeatureClickInfo = (e: mapboxgl.MapMouseEvent) => {
 const isEditingMode = ref(false) // 编辑模式
 const editingMode = ref('') // 编辑模式名称
 
-// const EditingGeoJsonData = ref() // 正在编辑的GeoJSON数据
-// const EditingFeature = ref() // 正在编辑的要素
-
 // 计算属性，状态文本信息
 const statusText = computed(() => {
   if (!isEditingMode.value) {
@@ -364,6 +361,7 @@ const toggleEditMode = async () => {
         )
         isEditingMode.value = false
         editingMode.value = ''
+        // updateMapCursor() // 更新鼠标样式
         ElMessage.success('已退出编辑模式')
       } catch {
         return
@@ -376,7 +374,7 @@ const toggleEditMode = async () => {
     isEditingMode.value = true
     ElMessage.success('已进入编辑模式')
   }
-  updateMapCursor()
+  updateMapCursor() // 更新鼠标样式
 }
 // 切换编辑模式
 const switchEditingMode = async (newMode: string) => {
@@ -384,6 +382,8 @@ const switchEditingMode = async (newMode: string) => {
   if (editingMode.value === newMode) {
     editingMode.value = ''
     ElMessage.info(`已退出${getModeText(newMode)}模式`)
+    updateMapCursor() // 更新鼠标样式
+    removeTempPoint() // 移除临时点
     return
   }
   // 如果当前有其他活动模式，提示确认切换
@@ -399,6 +399,7 @@ const switchEditingMode = async (newMode: string) => {
         },
       )
       editingMode.value = newMode
+      removeTempPoint() // 移除临时点
       ElMessage.success(`已切换到${getModeText(newMode)}模式`)
     } catch {
       // 用户取消操作
@@ -410,11 +411,219 @@ const switchEditingMode = async (newMode: string) => {
   }
   updateMapCursor()
 }
+const editingGeoJsonData = ref<GeoJSON.FeatureCollection>({
+  type: 'FeatureCollection',
+  features: [],
+}) // 正在编辑的GeoJSON数据
+const temporaryCoordinates = ref<[number, number]>([0, 0]) // 临时坐标存储
+const showFeatureForm = ref(false) // 显示要素信息表单
+//------------------添加要素方法-----------------------
+/**
+ * 删除临时点要素的方法
+ */
+const removeTempPoint = () => {
+  if (!map || !map.isStyleLoaded()) return // 地图未加载则直接返回
 
-const saveChanges = () => {
-  ElMessage.success('更改已保存')
+  // 1. 移除临时点图层（如果存在）
+  if (map.getLayer('temporary-point-layer')) {
+    map.removeLayer('temporary-point-layer')
+  }
+
+  // 2. 移除临时点数据源（如果存在）
+  if (map.getSource('temporary-point')) {
+    map.removeSource('temporary-point')
+  }
 }
-
+/**
+ * 生成临时点要素的方法
+ * @param {mapboxgl.LngLat} lngLat - 点的经纬度坐标
+ */
+const createTempPoint = (lngLat: [number, number]) => {
+  if (!map) return
+  // 移出临时点
+  removeTempPoint()
+  // 创建临时点
+  map.addSource('temporary-point', {
+    type: 'geojson',
+    data: {
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: lngLat,
+      },
+      properties: {},
+    },
+  })
+  map.addLayer({
+    id: 'temporary-point-layer',
+    type: 'circle',
+    source: 'temporary-point',
+    paint: {
+      'circle-radius': 8,
+      'circle-color': '#49A2FF', // 点颜色
+      'circle-stroke-width': 2, // 描边宽度
+      'circle-stroke-color': '#FFFFFF', // 描边颜色（白色）
+    },
+  })
+}
+const featureFormRef = ref() // 要素信息表单引用
+// 要素信息表单数据
+interface FeatureFormData {
+  name: string // 消防栓编号（使用小写）
+  currentStatus: string // 设备状态
+  currentPressure: number // 当前压力（改为数字类型）
+  managementUnit: string // 管理单位
+  installationDate: string // 安装日期
+}
+// 要素信息表单
+const featureFormData = ref<FeatureFormData>({
+  name: '', // 消防栓编号
+  currentStatus: '', // 设备状态
+  currentPressure: 0, // 当前压力
+  managementUnit: '', // 管理单位
+  installationDate: '', // 安装日期
+})
+// 要素信息表单验证规则
+const featureFormDataRules = ref({
+  name: [{ required: true, message: '请输入消防栓编号', trigger: 'blur' }],
+  currentStatus: [
+    { required: true, message: '请选择设备状态', trigger: 'change' },
+  ],
+  currentPressure: [
+    {
+      required: true,
+      type: 'number',
+      message: '请输入压力值',
+      trigger: 'blur',
+    },
+  ],
+  managementUnit: [
+    { required: true, message: '请输入管理单位', trigger: 'blur' },
+  ],
+  installationDate: [
+    { required: true, message: '请选择安装日期', trigger: 'change' },
+  ],
+})
+// 表单信息提交处理
+const handleFeatureFormSubmit = async (operation: string) => {
+  if (!featureFormRef.value) return
+  try {
+    await featureFormRef.value.validate() // 验证表单
+  } catch (error) {
+    console.log('表单验证失败:', error)
+    return
+  }
+  // 根据操作类型处理
+  if (operation === 'addFeature') {
+    // 创建要素表单提交逻辑
+    handleCreateFeatureSubmit()
+  } else if (operation === 'updateFeature') {
+    // 更新要素逻辑
+    console.log('更新要素:', featureFormData.value)
+  }
+}
+// 表单提交（创建要素）
+const handleCreateFeatureSubmit = () => {
+  // 创建临时要素.时间戳生成临时 ID
+  const templateFeature: GeoJSON.Feature = {
+    type: 'Feature',
+    id: `temp_${Date.now()}`, // 临时 ID：避免与正式数据 ID 冲突
+    geometry: {
+      type: 'Point',
+      coordinates: temporaryCoordinates.value,
+    },
+    properties: {
+      Name: featureFormData.value.name,
+      currentStatus: featureFormData.value.currentStatus,
+      currentPressure: featureFormData.value.currentPressure,
+      managementUnit: featureFormData.value.managementUnit,
+      installationDate: featureFormData.value.installationDate,
+    },
+  }
+  console.log('创建临时要素:', templateFeature)
+  // 将临时要素添加到 临时GeoJSON 数据中
+  editingGeoJsonData.value.features.push(templateFeature)
+  // 合并原始数据和临时数据，在地图上更新显示
+  const source = map?.getSource('sdjzdx_FireHydranty_Point')
+  if (source) {
+    // 合并数据
+    const mergedData: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [
+        ...fireHydrantGeojson.value.features,
+        ...editingGeoJsonData.value.features,
+      ],
+    }
+    // 更新数据源
+    ;(source as mapboxgl.GeoJSONSource).setData(mergedData)
+  }
+  // 添加marker标记
+  const newMarker = creatMaker(templateFeature)
+  markers.push(newMarker)
+  showFeatureForm.value = false // 关闭表单弹窗
+  removeTempPoint() // 移除临时点
+  ElMessage.success('要素添加成功！')
+}
+// 创建要素方法
+const handleCreateFeature = (e: mapboxgl.MapMouseEvent) => {
+  if (!map) return
+  // 获取点击位置坐标信息
+  temporaryCoordinates.value = [e.lngLat.lng, e.lngLat.lat]
+  // 重置表单数据
+  featureFormData.value = {
+    name: '',
+    currentStatus: '',
+    currentPressure: 0,
+    managementUnit: '',
+    installationDate: '',
+  }
+  showFeatureForm.value = true // 显示要素信息表单
+}
+// // 更新要素方法
+// const handleUpdateFeature = (e: mapboxgl.MapMouseEvent) => {}
+// // 删除要素方法
+// const handleDeleteFeature = (e: mapboxgl.MapMouseEvent) => {}
+const handleSaveFeature = async (operation: string) => {
+  if (!editingGeoJsonData.value.features.length) return
+  // 调用API保存编辑的GeoJSON数据
+  try {
+    ElMessage.info('正在保存更改...')
+    switch (operation) {
+      case 'addFeature':
+        await EditPointFeaturesAPI(
+          editingGeoJsonData.value.features,
+          'addFeature',
+          'sdjzdx_FireHydranty_Point',
+        )
+        break
+      case 'update':
+        await EditPointFeaturesAPI(
+          editingGeoJsonData.value.features,
+          'update',
+          'sdjzdx_FireHydranty_Point',
+        )
+        break
+      case 'delete':
+        await EditPointFeaturesAPI(
+          editingGeoJsonData.value.features,
+          'delete',
+          'sdjzdx_FireHydranty_Point',
+        )
+        break
+    }
+    ElMessage.success('数据保存成功')
+    // 重置数据
+    editingGeoJsonData.value = {
+      type: 'FeatureCollection',
+      features: [],
+    }
+    // 刷新数据源
+    addGeoJSONLayer('sdjzdx_FireHydranty_Point')
+  } catch (error) {
+    ElMessage.error('数据保存失败')
+    console.log('数据保存失败:', error)
+  }
+}
 //------------------定义初始化地图的函数---------------------
 const initMap = () => {
   map = new mapboxgl.Map({
@@ -501,9 +710,18 @@ const initMap = () => {
     if (editingMode.value === 'addFeature') {
       console.log('添加要素逻辑')
       // 执行添加要素的具体逻辑
+      handleCreateFeature(e)
+      // 飞行到点击位置
+      map.flyTo({
+        center: e.lngLat,
+        zoom: 17,
+      })
+      // 生成一个临时要素点
+      createTempPoint([e.lngLat.lng, e.lngLat.lat])
       return
     }
     // 其他情况下隐藏要素信息弹窗
+    removeTempPoint() // 移除临时点
     showFeaturePopup.value = false
   })
 }
@@ -539,7 +757,9 @@ onUnmounted(() => {
       </div>
       <!-- 编辑工具区域 -->
       <div v-if="isEditingMode" class="edit-tools">
-        <el-button type="success" @click="saveChanges"> 保存更改 </el-button>
+        <el-button type="success" @click="handleSaveFeature(editingMode)">
+          保存更改
+        </el-button>
         <el-button
           :type="editingMode === 'addFeature' ? 'danger' : 'primary'"
           @click="switchEditingMode('addFeature')"
@@ -592,6 +812,76 @@ onUnmounted(() => {
       >管理单位：{{ popupFormaData.managementUnit }}</span
     >
   </div>
+  <!-- 添加要素弹窗表单 -->
+  <div v-if="showFeatureForm" class="custom-dialog">
+    <!-- 表单：绑定表单实例、数据、验证规则 -->
+    <el-form
+      ref="featureFormRef"
+      :model="featureFormData"
+      :rules="featureFormDataRules"
+      label-width="120px"
+    >
+      <div class="dialog-header">
+        <h3>要素信息表单</h3>
+      </div>
+
+      <!-- 消防栓编号：文本 -->
+      <el-form-item label="消防栓编号" prop="Name">
+        <el-input
+          v-model="featureFormData.name"
+          placeholder="请输入消防栓编号"
+        ></el-input>
+      </el-form-item>
+      <!-- 1. 设备状态：下拉选择（正常/维修/错误） -->
+      <el-form-item label="设备状态" prop="currentStatus">
+        <el-select v-model="featureFormData.currentStatus">
+          <el-option label="正常" value="normal"></el-option>
+          <el-option label="维修" value="repairing"></el-option>
+          <el-option label="错误" value="error"></el-option>
+        </el-select>
+      </el-form-item>
+
+      <!-- 2. 当前压力：数字输入（步长 0.01，验证必填+数字类型） -->
+      <el-form-item label="当前压力" prop="currentPressure">
+        <el-input
+          v-model.number="featureFormData.currentPressure"
+          type="number"
+          step="0.01"
+          placeholder="请输入压力值"
+        ></el-input>
+      </el-form-item>
+
+      <!-- 3. 管理单位：文本输入（验证必填） -->
+      <el-form-item label="管理单位" prop="managementUnit">
+        <el-input
+          v-model="featureFormData.managementUnit"
+          placeholder="请输入管理单位"
+        ></el-input>
+      </el-form-item>
+
+      <!-- 4. 安装日期：日期选择器（格式 YYYY-MM-DD，验证必填） -->
+      <el-form-item label="安装日期" prop="installationDate">
+        <el-date-picker
+          v-model="featureFormData.installationDate"
+          type="date"
+          placeholder="选择安装日期"
+          value-format="YYYY-MM-DD"
+          style="width: 100%"
+        ></el-date-picker>
+      </el-form-item>
+    </el-form>
+
+    <!-- 弹窗底部按钮：取消/确认添加 -->
+    <div class="dialog-footer">
+      <el-button @click="((showFeatureForm = false), removeTempPoint())"
+        >取消</el-button
+      >
+      <el-button type="primary" @click="handleFeatureFormSubmit(editingMode)"
+        >确认</el-button
+      >
+    </div>
+  </div>
+  <!-- 更新要素弹窗表单 -->
 </template>
 <style scoped lang="scss">
 .map-container {
@@ -630,7 +920,7 @@ onUnmounted(() => {
 .layercontroller {
   position: absolute;
   top: 70px;
-  right: 10px;
+  right: 20px;
 }
 // 编辑功能样式
 .edit-controls {
@@ -659,6 +949,33 @@ onUnmounted(() => {
     border-radius: 5px;
     display: flex;
     gap: 8px;
+  }
+}
+.custom-dialog {
+  position: absolute;
+  top: 110px;
+  right: 20px;
+  background-color: #ffffff;
+  padding: 20px;
+  border-radius: 8px;
+  width: 400px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid #ebeef5;
+  .dialog-header {
+    font-size: 16px;
+    color: #333;
+    margin-bottom: 20px;
+  }
+  .el-form-item {
+    margin-bottom: 22px;
+  }
+
+  // 仅新增按钮容器基础样式
+  .dialog-footer {
+    display: flex;
+    justify-content: flex-end; // 按钮右对齐
+    gap: 10px; // 按钮间基础间距
+    margin-top: 20px; // 与表单拉开基础距离
   }
 }
 </style>

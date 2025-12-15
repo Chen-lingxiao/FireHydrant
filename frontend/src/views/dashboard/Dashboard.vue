@@ -1012,12 +1012,24 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  .info-card,
+  .info-card {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 15px;
+    box-sizing: border-box;
+    flex: 1;
+    .info-grid {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+  }
   .table-card {
     background-color: rgba(0, 0, 0, 0.2);
     border-radius: 8px;
     padding: 15px;
     box-sizing: border-box;
+    flex: 1;
     h3 {
       margin: 0 0 15px 0;
       color: white;
@@ -1025,11 +1037,7 @@ onBeforeUnmount(() => {
       font-weight: bold;
     }
   }
-  .info-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 15px;
-  }
+
   .info-item {
     display: flex;
     flex-direction: column;

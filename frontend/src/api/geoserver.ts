@@ -7,9 +7,8 @@ const LAYER_INFO = {
   workspace: 'sdjzdx', // 工作区名称
   namespace: 'http://localhost:8085/geoserver/sdjzdx', // 工作区命名空间（需与GeoServer一致）
   geomField: 'geom', // 几何字段名
-
-  // --------------------------wfs 服务------------------------------------
 }
+// --------------------------wfs 服务------------------------------------
 // 从GeoServer加载要素数据
 /**
  * @param none
@@ -50,7 +49,7 @@ export const GetFeaturesAPI = async (layerName: string) => {
  */
 export const EditPointFeaturesAPI = async (
   features: GeoJSON.Feature[], // 要素数据
-  operation: 'insert' | 'update' | 'delete', // 操作类型
+  operation: 'addFeature' | 'update' | 'delete', // 操作类型
   layerName: string, // 图层名称
 ) => {
   if (!features || !features.length) {
@@ -60,7 +59,7 @@ export const EditPointFeaturesAPI = async (
   const url = `${LAYER_INFO.baseURL}/wfs` // WFS-T服务地址
   let TransactionFragments = '' // 存储WFS-T事务片段
   switch (operation) {
-    case 'insert': // 插入要素操作
+    case 'addFeature': // 插入要素操作
       TransactionFragments = features
         .map((feature) => {
           if (
@@ -70,24 +69,28 @@ export const EditPointFeaturesAPI = async (
             return ''
           }
           // GeoJSON Point 的 coordinates: [经度, 纬度] 格式（数组）
-          // GML 的 gml:pos: "经度 纬度" 格式（字符串，空格分隔）
-          const pos = feature.geometry.coordinates.join(' ')
-          console.log('pos', pos)
+          // GML 的 gml:coordinates: "经度,纬度" 格式（字符串，逗号分隔）
+          const [lng, lat] = feature.geometry.coordinates
+          const pos = `${lng} ${lat}` // 经度在前，纬度在后
+          const coordinates = `${lng},${lat}` // 经度,纬度（逗号分隔）
+          console.log('原始坐标:', feature.geometry.coordinates)
+          console.log('转换后pos:', pos)
+          console.log('转换后coordinates:', coordinates)
           return `
           <wfs:Insert>
-            <${LAYER_INFO.workspace}:${layerName}>
-              <${LAYER_INFO.workspace}:${LAYER_INFO.geomField}>
+            <${layerName}>
+              <${LAYER_INFO.geomField}>
                 <gml:Point srsName="EPSG:4326">
-                  <gml:pos>${pos}</gml:pos>
+                  <gml:coordinates>${coordinates}</gml:coordinates>
                 </gml:Point>
-              </${LAYER_INFO.workspace}:${LAYER_INFO.geomField}>
+              </${LAYER_INFO.geomField}>
               <!-- 以下是属性字段 -->
-              <${LAYER_INFO.workspace}:Name>${feature.properties?.Name}</${LAYER_INFO.workspace}:Name>
-              <${LAYER_INFO.workspace}:currentStatus>${feature.properties?.currentStatus}</${LAYER_INFO.workspace}:currentStatus>
-              <${LAYER_INFO.workspace}:currentPressure>${feature.properties?.currentPressure}</${LAYER_INFO.workspace}:currentPressure>
-              <${LAYER_INFO.workspace}:managementUnit>${feature.properties?.managementUnit}</${LAYER_INFO.workspace}:managementUnit>
-              <${LAYER_INFO.workspace}:installationDate>${feature.properties?.installationDate}</${LAYER_INFO.workspace}:installationDate>
-            </${LAYER_INFO.workspace}:${layerName}>
+              <Name>${feature.properties?.Name}</Name>
+              <currentStatus>${feature.properties?.currentStatus}</currentStatus>
+              <currentPressure>${feature.properties?.currentPressure}</currentPressure>
+              <managementUnit>${feature.properties?.managementUnit}</managementUnit>
+              <installationDate>${feature.properties?.installationDate}</installationDate>
+            </${layerName}>
           </wfs:Insert>`
         })
         .join('') // 拼接WFS-T事务片段
@@ -147,7 +150,7 @@ export const EditPointFeaturesAPI = async (
     <wfs:Transaction service="WFS" version="1.0.0"
       xmlns:wfs="http://www.opengis.net/wfs"
       xmlns:gml="http://www.opengis.net/gml"
-       xmlns:${LAYER_INFO.workspace}="${LAYER_INFO.namespace}"
+       xmlns:${LAYER_INFO.workspace}="${LAYER_INFO.namespace}">
       ${TransactionFragments}
     </wfs:Transaction>
   `
