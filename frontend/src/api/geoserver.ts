@@ -27,7 +27,8 @@ export const GetFeaturesAPI = async (layerName: string) => {
   }
   try {
     const response = await axios.get(url, { params })
-    // 遍历循环，分割id fire_hydrants.1 --> 1
+    console.log('加载要素成功:', response.data)
+    // 遍历循环，分割id 图层名.id --> 1
     response.data.features.forEach((feature: Feature) => {
       if (feature.id) {
         const idParts = String(feature.id).split('.')
@@ -102,8 +103,9 @@ export const EditPointFeaturesAPI = async (
             // 缺少 geometry 或 properties
             return ''
           const id = feature.id // 要素id
+          console.log('更新要素id:', id)
           return `
-            <wfs:Update typeName="${LAYER_INFO.workspace}:${layerName}">
+            <wfs:Update typeName="${layerName}">
               <wfs:Property>
                 <wfs:Name>Name</wfs:Name>
                 <wfs:Value>${feature.properties?.Name}</wfs:Value>
@@ -124,13 +126,9 @@ export const EditPointFeaturesAPI = async (
                 <wfs:Name>installationDate</wfs:Name>
                 <wfs:Value>${feature.properties?.installationDate}</wfs:Value>
               </wfs:Property>
-              <wfs:Property>
-                <wfs:Name>managementUserNo</wfs:Name>
-                <wfs:Value>${feature.properties?.installationDate}</wfs:Value>
-              </wfs:Property>
               <!-- 定位要更新的要素：通过 ID 过滤 -->
               <ogc:Filter>
-                <ogc:FeatureId fid="fire_hydrants.${id}"/>
+                <ogc:FeatureId fid="${layerName}.${id}"/>
               </ogc:Filter>
             </wfs:Update>
             `
@@ -150,7 +148,8 @@ export const EditPointFeaturesAPI = async (
     <wfs:Transaction service="WFS" version="1.0.0"
       xmlns:wfs="http://www.opengis.net/wfs"
       xmlns:gml="http://www.opengis.net/gml"
-       xmlns:${LAYER_INFO.workspace}="${LAYER_INFO.namespace}">
+       xmlns:${LAYER_INFO.workspace}="${LAYER_INFO.namespace}"
+       xmlns:ogc="http://www.opengis.net/ogc">
       ${TransactionFragments}
     </wfs:Transaction>
   `

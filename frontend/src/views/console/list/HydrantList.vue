@@ -267,6 +267,15 @@ const formatStatus = (status: string) => {
 const getClickFeature = (e: mapboxgl.MapMouseEvent) => {
   if (!e.features) return
   const feature = e.features[0] // 获取点击的要素
+  map?.flyTo({
+    center: e.lngLat,
+    zoom: 17,
+  })
+  return feature
+}
+// 点击要素 - 显示弹窗信息
+const handleFeatureClickInfo = (e: mapboxgl.MapMouseEvent) => {
+  const feature = getClickFeature(e)
   if (!feature) return
   selectedFeature.value = feature // 保存点击的要素
   popupFormaData.value = {
@@ -276,15 +285,6 @@ const getClickFeature = (e: mapboxgl.MapMouseEvent) => {
     installationDate: feature.properties?.installationDate,
     managementUnit: feature.properties?.managementUnit,
   }
-
-  map?.flyTo({
-    center: e.lngLat,
-    zoom: 17,
-  })
-}
-// 点击要素 - 显示弹窗信息
-const handleFeatureClickInfo = (e: mapboxgl.MapMouseEvent) => {
-  getClickFeature(e)
   showFeaturePopup.value = true
 }
 //  ------------------GeoJSON数据编辑功能---------------------
@@ -518,8 +518,8 @@ const handleFeatureFormSubmit = async (operation: string) => {
     // 创建要素表单提交逻辑
     handleCreateFeatureSubmit()
   } else if (operation === 'updateFeature') {
-    // 更新要素逻辑
-    console.log('更新要素:', featureFormData.value)
+    // 更新要素表单提交逻辑
+    handleUpdateFeatureSubmit()
   }
 }
 // 表单提交（创建要素）
@@ -564,6 +564,63 @@ const handleCreateFeatureSubmit = () => {
   removeTempPoint() // 移除临时点
   ElMessage.success('要素添加成功！')
 }
+// 更新要素表单提交逻辑
+const handleUpdateFeatureSubmit = () => {
+  // 创建临时要素,属性为表单数据
+  const templateFeature: GeoJSON.Feature = {
+    type: 'Feature',
+    id: selectedFeature.value?.id, // 使用选中要素的 ID
+    geometry: selectedFeature.value?.geometry || {
+      type: 'Point',
+      coordinates: [0, 0],
+    },
+    properties: {
+      // 表单数据映射到要素属性
+      Name: featureFormData.value.name,
+      currentStatus: featureFormData.value.currentStatus,
+      currentPressure: featureFormData.value.currentPressure,
+      managementUnit: featureFormData.value.managementUnit,
+      installationDate: featureFormData.value.installationDate,
+    },
+  }
+  console.log('创建临时要素:', templateFeature)
+  // 将临时要素添加到 临时GeoJSON 数据中
+  editingGeoJsonData.value.features.push(templateFeature)
+  // 合并原始数据和临时数据，在地图上更新显示
+  const source = map?.getSource('sdjzdx_FireHydranty_Point')
+  if (source) {
+    // 合并数据
+    const mergedData: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [
+        ...fireHydrantGeojson.value.features,
+        ...editingGeoJsonData.value.features,
+      ],
+    }
+    // 更新数据源
+    ;(source as mapboxgl.GeoJSONSource).setData(mergedData)
+  }
+  // 查找并更新现有的marker，而不是创建新的
+  const featureId = templateFeature.properties?.Name
+  if (featureId) {
+    // 查找现有的marker并移除
+    const markerIndex = markers.findIndex(
+      (marker) => marker.getElement().dataset.featureId === featureId,
+    )
+
+    if (markerIndex !== -1) {
+      markers[markerIndex]?.remove()
+      markers.splice(markerIndex, 1)
+    }
+
+    // 创建新的marker
+    const newMarker = creatMaker(templateFeature)
+    markers.push(newMarker)
+  }
+
+  showFeatureForm.value = false // 关闭表单弹窗
+  ElMessage.success('要素更新成功！')
+}
 // 创建要素方法
 const handleCreateFeature = (e: mapboxgl.MapMouseEvent) => {
   if (!map) return
@@ -579,12 +636,36 @@ const handleCreateFeature = (e: mapboxgl.MapMouseEvent) => {
   }
   showFeatureForm.value = true // 显示要素信息表单
 }
-// // 更新要素方法
-// const handleUpdateFeature = (e: mapboxgl.MapMouseEvent) => {}
+// 更新要素方法
+const handleUpdateFeature = (e: mapboxgl.MapMouseEvent) => {
+  if (!map) return
+  // 获取点击要素
+  const feature = getClickFeature(e)
+  if (!feature) return
+  selectedFeature.value = feature // 保存点击的要素
+  featureFormData.value = {
+    name: feature?.properties?.Name,
+    currentStatus: feature?.properties?.currentStatus,
+    currentPressure: feature?.properties?.currentPressure || 0,
+    managementUnit: feature?.properties?.managementUnit,
+    installationDate: feature?.properties?.installationDate,
+  }
+  showFeatureForm.value = true // 显示要素信息表单
+}
+
 // // 删除要素方法
 // const handleDeleteFeature = (e: mapboxgl.MapMouseEvent) => {}
+
 const handleSaveFeature = async (operation: string) => {
-  if (!editingGeoJsonData.value.features.length) return
+  console.log('准备保存，操作类型:', operation)
+  console.log('待保存的数据:', editingGeoJsonData.value.features)
+
+  if (!editingGeoJsonData.value.features.length) {
+    ElMessage.warning('没有需要保存的更改')
+    console.log('没有需要保存的更改')
+    return
+  }
+
   // 调用API保存编辑的GeoJSON数据
   try {
     ElMessage.info('正在保存更改...')
@@ -596,20 +677,26 @@ const handleSaveFeature = async (operation: string) => {
           'sdjzdx_FireHydranty_Point',
         )
         break
-      case 'update':
+      case 'updateFeature':
+        console.log('更新要素开始')
         await EditPointFeaturesAPI(
           editingGeoJsonData.value.features,
           'update',
           'sdjzdx_FireHydranty_Point',
         )
+        console.log('更新要素成功')
         break
-      case 'delete':
+      case 'deleteFeature':
         await EditPointFeaturesAPI(
           editingGeoJsonData.value.features,
           'delete',
           'sdjzdx_FireHydranty_Point',
         )
         break
+      default:
+        ElMessage.warning('无效的操作类型')
+        console.log('无效的操作类型:', operation)
+        return
     }
     ElMessage.success('数据保存成功')
     // 重置数据
@@ -675,6 +762,7 @@ const initMap = () => {
       switch (editingMode.value) {
         case 'updateFeature':
           console.log('更新要素逻辑')
+          handleUpdateFeature(e)
           // 更新要素逻辑
           break
         case 'deleteFeature':
@@ -876,7 +964,9 @@ onUnmounted(() => {
       <el-button @click="((showFeatureForm = false), removeTempPoint())"
         >取消</el-button
       >
-      <el-button type="primary" @click="handleFeatureFormSubmit(editingMode)"
+      <el-button
+        type="primary"
+        @click="(handleFeatureFormSubmit(editingMode), removeTempPoint())"
         >确认</el-button
       >
     </div>
