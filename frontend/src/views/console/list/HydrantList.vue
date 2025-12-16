@@ -363,6 +363,8 @@ const toggleEditMode = async () => {
         editingMode.value = ''
         // updateMapCursor() // 更新鼠标样式
         ElMessage.success('已退出编辑模式')
+        // 刷新数据源
+        addGeoJSONLayer('sdjzdx_FireHydranty_Point')
       } catch {
         return
       }
@@ -400,6 +402,8 @@ const switchEditingMode = async (newMode: string) => {
       )
       editingMode.value = newMode
       removeTempPoint() // 移除临时点
+      // 刷新数据源
+      addGeoJSONLayer('sdjzdx_FireHydranty_Point')
       ElMessage.success(`已切换到${getModeText(newMode)}模式`)
     } catch {
       // 用户取消操作
@@ -654,7 +658,71 @@ const handleUpdateFeature = (e: mapboxgl.MapMouseEvent) => {
 }
 
 // // 删除要素方法
-// const handleDeleteFeature = (e: mapboxgl.MapMouseEvent) => {}
+const handleDeleteFeature = async (e: mapboxgl.MapMouseEvent) => {
+  if (!map) return
+  const feature = getClickFeature(e)
+  if (!feature) return
+  try {
+    await ElMessageBox.confirm(
+      `是否确认删除消防栓 ID: ${feature.properties?.Name} `,
+      '确认删除',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+    // 具体删除逻辑
+    const templateFeature: GeoJSON.Feature = {
+      type: 'Feature',
+      id: feature.id, // 使用选中要素的 ID
+      geometry: feature.geometry,
+      properties: {
+        Name: feature.properties?.Name,
+        currentStatus: feature.properties?.currentStatus,
+        currentPressure: feature.properties?.currentPressure,
+        managementUnit: feature.properties?.managementUnit,
+        installationDate: feature.properties?.installationDate,
+      },
+    }
+    // 更新临时要素数据集
+    editingGeoJsonData.value.features.push(templateFeature)
+    // 删除要素marker
+    editingGeoJsonData.value.features.forEach((feature) => {
+      // 根据自定义属性删除要素
+      if (markers.length) {
+        markers.forEach((marker) => {
+          if (
+            marker.getElement().dataset.featureId === feature.properties?.Name
+          ) {
+            marker.remove()
+          }
+        })
+      }
+    })
+    // 删除要素显示
+    const source = map?.getSource('sdjzdx_FireHydranty_Point')
+    if (source) {
+      console.log('完整要素:', fireHydrantGeojson.value.features)
+      console.log('删除要素:', templateFeature)
+      // 创建新的数据源，过滤掉被删除的要素
+      const templateFeatures = fireHydrantGeojson.value.features.filter(
+        (feature) => feature.id != templateFeature.id,
+      )
+      console.log('删除后的要素:', templateFeatures)
+      ;(source as mapboxgl.GeoJSONSource).setData({
+        type: 'FeatureCollection',
+        features: templateFeatures,
+      })
+    }
+    ElMessage.success('要素删除成功！')
+  } catch (error) {
+    console.log('取消删除', error)
+    // 刷新数据源
+    addGeoJSONLayer('sdjzdx_FireHydranty_Point')
+    return
+  }
+}
 
 const handleSaveFeature = async (operation: string) => {
   console.log('准备保存，操作类型:', operation)
@@ -767,6 +835,7 @@ const initMap = () => {
           break
         case 'deleteFeature':
           console.log('删除要素逻辑')
+          handleDeleteFeature(e)
           // 删除要素逻辑
           break
         case 'addFeature':

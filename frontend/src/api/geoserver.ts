@@ -136,6 +136,21 @@ export const EditPointFeaturesAPI = async (
         .join('')
       break
     case 'delete': // 删除要素操作
+      TransactionFragments = features
+        .map((feature) => {
+          if (!feature.id) {
+            return ''
+          }
+          console.log('删除要素id:', feature.id)
+          return `
+            <wfs:Delete typeName="${layerName}">
+              <ogc:Filter>
+                <ogc:FeatureId fid="${layerName}.${feature.id}"/>
+              </ogc:Filter>
+            </wfs:Delete>
+            `
+        })
+        .join('')
       break
   }
   // 如果没有WFS-T事务片段
