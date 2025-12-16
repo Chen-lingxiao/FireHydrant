@@ -185,6 +185,53 @@ const creatMaker = (feature: GeoJSON.Feature) => {
  * 加载GeoJSON数据并添加图层
  * @param layerName - 要加载的GeoJSON数据源名称
  */
+// 定义geojsonDataList中每项的类型
+interface HydrantData {
+  id: string | number | undefined
+  name: string | undefined
+  longitude: number
+  latitude: number
+  status: string | undefined
+  pressure: string | number | undefined
+  managementUnit: string | undefined
+  installationDate: string | undefined
+}
+
+const geojsonDataList = ref<HydrantData[]>([]) // 存储获取的GeoJSON数据列表
+const geojsonDataMap = new Map<string, GeoJSON.Feature>() // 存储GeoJSON数据的Map
+const search = ref('')
+const filtergeojsonDataList = computed(() =>
+  geojsonDataList.value.filter(
+    (data) =>
+      !search.value ||
+      data.name?.toLowerCase().includes(search.value.toLowerCase()),
+  ),
+)
+// 高亮选中的要素
+const highlightFeature = (feature: GeoJSON.Feature) => {
+  if (!map) return
+
+  const source = map.getSource('highlighted-feature')
+  if (source) {
+    ;(source as mapboxgl.GeoJSONSource).setData({
+      type: 'FeatureCollection',
+      features: [feature],
+    })
+  }
+}
+// 清除高亮
+const clearHighlight = () => {
+  if (!map) return
+
+  const source = map.getSource('highlighted-feature')
+  if (source) {
+    ;(source as mapboxgl.GeoJSONSource).setData({
+      type: 'FeatureCollection',
+      features: [],
+    })
+  }
+  selectedFeatureId.value = null
+}
 const addGeoJSONLayer = async (layerName: string) => {
   try {
     if (!map) return
@@ -195,6 +242,40 @@ const addGeoJSONLayer = async (layerName: string) => {
     }
     // 获取GeoJSON数据
     const Geojson = await GetFeaturesAPI(layerName)
+    geojsonDataList.value = Geojson.features
+      .sort((a: GeoJSON.Feature, b: GeoJSON.Feature) => {
+        // 按照ID排序，假设ID是字符串形式的数字
+        const idA = String(a.id || '')
+        const idB = String(b.id || '')
+        return idA.localeCompare(idB, undefined, { numeric: true })
+      })
+      .map((feature: GeoJSON.Feature) => {
+        // 检查geometry是否为Point类型后再访问coordinates
+        if (!feature.geometry || feature.geometry.type !== 'Point') {
+          return null
+        }
+        const coordinates = (feature.geometry.coordinates as [
+          number,
+          number,
+        ]) || [0, 0]
+
+        return {
+          id: feature?.id, // ID
+          name: feature.properties?.Name, // 名称
+          // 经纬度
+          longitude: coordinates[0], // 经度
+          latitude: coordinates[1], // 纬度
+          status: feature.properties?.currentStatus, // 设备状态
+          pressure: feature.properties?.currentPressure, // 压力
+          managementUnit: feature.properties?.managementUnit, // 所属管理单元
+          installationDate: feature.properties?.installationDate, // 安装日期
+        }
+      })
+    Geojson.features.forEach((feature: GeoJSON.Feature) => {
+      geojsonDataMap.set(feature.id as string, feature)
+    })
+    console.log('Geojson数据列表:', geojsonDataList.value)
+    console.log('Geojson数据Map:', geojsonDataMap)
     fireHydrantGeojson.value = Geojson
     console.log(Geojson)
     // 添加GeoJSON数据源和图层
@@ -224,6 +305,31 @@ const addGeoJSONLayer = async (layerName: string) => {
         'circle-stroke-color': '#fff',
       },
     })
+
+    // 添加高亮图层
+    map.addSource('highlighted-feature', {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: [],
+      },
+    })
+
+    map.addLayer({
+      id: 'highlighted-feature-layer',
+      type: 'circle',
+      source: 'highlighted-feature',
+      paint: {
+        'circle-radius': 18,
+        'circle-color': '#409EFF',
+        'circle-opacity': 0.8,
+        'circle-stroke-width': 3,
+        'circle-stroke-color': '#FFFFFF',
+      },
+      layout: {
+        visibility: 'visible',
+      },
+    })
     // 清空marker标记
     if (markers.length > 0) {
       markers.forEach((marker) => marker.remove())
@@ -242,6 +348,7 @@ const addGeoJSONLayer = async (layerName: string) => {
 const selectedFeature = ref<GeoJSON.Feature | null>(null)
 const showFeaturePopup = ref(false) // 显示要素弹窗
 const popupFormaData = ref() // 格式化弹窗信息
+const selectedFeatureId = ref<string | number | null>(null) // 选中要素的ID
 // 格式化压力显示
 const formatPressure = (pressure: number | string) => {
   if (pressure === null || pressure === undefined || pressure === '') {
@@ -263,6 +370,43 @@ const formatStatus = (status: string) => {
       return status || '未知状态'
   }
 }
+
+// 定义表格行数据接口
+interface TableRowData {
+  id: string | number | undefined
+  name: string | undefined
+  longitude: number
+  latitude: number
+  status: string | undefined
+  pressure: string | number | undefined
+  managementUnit: string | undefined
+  installationDate: string | undefined
+}
+
+// 添加格式化函数
+const formatId = (row: TableRowData) => {
+  return row.id || ''
+}
+
+// 根据状态值返回相应的CSS类名
+const tableRowClassName = ({ row }: { row: TableRowData }) => {
+  switch (row.status) {
+    case 'normal':
+      return 'normal-row'
+    case 'repairing':
+      return 'repairing-row'
+    case 'error':
+      return 'error-row'
+    default:
+      return ''
+  }
+}
+
+// 添加筛选方法
+const filterStatus = (value: string, row: TableRowData) => {
+  return row.status === value
+}
+
 // 获取点击的要素
 const getClickFeature = (e: mapboxgl.MapMouseEvent) => {
   if (!e.features) return
@@ -273,6 +417,7 @@ const getClickFeature = (e: mapboxgl.MapMouseEvent) => {
   })
   return feature
 }
+
 // 点击要素 - 显示弹窗信息
 const handleFeatureClickInfo = (e: mapboxgl.MapMouseEvent) => {
   const feature = getClickFeature(e)
@@ -286,6 +431,7 @@ const handleFeatureClickInfo = (e: mapboxgl.MapMouseEvent) => {
     managementUnit: feature.properties?.managementUnit,
   }
   showFeaturePopup.value = true
+  highlightFeature(feature)
 }
 //  ------------------GeoJSON数据编辑功能---------------------
 // 状态变量
@@ -657,7 +803,7 @@ const handleUpdateFeature = (e: mapboxgl.MapMouseEvent) => {
   showFeatureForm.value = true // 显示要素信息表单
 }
 
-// // 删除要素方法
+// 删除要素方法
 const handleDeleteFeature = async (e: mapboxgl.MapMouseEvent) => {
   if (!map) return
   const feature = getClickFeature(e)
@@ -677,13 +823,7 @@ const handleDeleteFeature = async (e: mapboxgl.MapMouseEvent) => {
       type: 'Feature',
       id: feature.id, // 使用选中要素的 ID
       geometry: feature.geometry,
-      properties: {
-        Name: feature.properties?.Name,
-        currentStatus: feature.properties?.currentStatus,
-        currentPressure: feature.properties?.currentPressure,
-        managementUnit: feature.properties?.managementUnit,
-        installationDate: feature.properties?.installationDate,
-      },
+      properties: feature.properties,
     }
     // 更新临时要素数据集
     editingGeoJsonData.value.features.push(templateFeature)
@@ -703,13 +843,10 @@ const handleDeleteFeature = async (e: mapboxgl.MapMouseEvent) => {
     // 删除要素显示
     const source = map?.getSource('sdjzdx_FireHydranty_Point')
     if (source) {
-      console.log('完整要素:', fireHydrantGeojson.value.features)
-      console.log('删除要素:', templateFeature)
       // 创建新的数据源，过滤掉被删除的要素
       const templateFeatures = fireHydrantGeojson.value.features.filter(
         (feature) => feature.id != templateFeature.id,
       )
-      console.log('删除后的要素:', templateFeatures)
       ;(source as mapboxgl.GeoJSONSource).setData({
         type: 'FeatureCollection',
         features: templateFeatures,
@@ -880,6 +1017,7 @@ const initMap = () => {
     // 其他情况下隐藏要素信息弹窗
     removeTempPoint() // 移除临时点
     showFeaturePopup.value = false
+    clearHighlight() // 清除高亮
   })
 }
 
@@ -888,6 +1026,145 @@ const unloadMap = () => {
   if (map) {
     map.remove() // 移除地图实例
   }
+}
+// 表格操作方法
+const handleView = (index: number, row: TableRowData) => {
+  if (!map) return
+  console.log(index, row)
+  const feature = geojsonDataMap.get(String(row.id))
+  if (!feature) {
+    ElMessage.error('要素不存在！')
+    return
+  }
+  console.log('查看要素详情:', feature)
+  selectedFeature.value = feature // 保存点击的要素
+  popupFormaData.value = {
+    name: feature.properties?.Name,
+    currentPressure: formatPressure(feature.properties?.currentPressure),
+    currentStatus: formatStatus(feature.properties?.currentStatus),
+    installationDate: feature.properties?.installationDate,
+    managementUnit: feature.properties?.managementUnit,
+  }
+  showFeaturePopup.value = true
+  // 飞行到点击位置
+  const geometry = selectedFeature.value.geometry
+  if (geometry && geometry.type === 'Point') {
+    map.flyTo({
+      center: geometry.coordinates as [number, number],
+      zoom: 17,
+    })
+
+    highlightFeature(feature)
+  }
+}
+const handleEdit = (index: number, row: TableRowData) => {
+  console.log(index, row)
+  // 打开编辑模式，并切换到更新要素模式
+  if (!isEditingMode.value) {
+    isEditingMode.value = true
+    editingMode.value = 'updateFeature'
+    updateMapCursor() // 更新鼠标样式
+  } else {
+    // 如果当前是编辑模式，则切换到更新要素模式
+    editingMode.value = 'updateFeature'
+    updateMapCursor() // 更新鼠标样式
+  }
+  if (!map) return
+  // 获取点击要素
+  const feature = geojsonDataMap.get(String(row.id))
+  if (!feature) return
+  selectedFeature.value = feature // 保存点击的要素
+  featureFormData.value = {
+    name: feature?.properties?.Name,
+    currentStatus: feature?.properties?.currentStatus,
+    currentPressure: feature?.properties?.currentPressure || 0,
+    managementUnit: feature?.properties?.managementUnit,
+    installationDate: feature?.properties?.installationDate,
+  }
+  showFeatureForm.value = true // 显示要素信息表单
+  // 飞行到点击位置
+  const geometry = selectedFeature.value.geometry
+  if (geometry && geometry.type === 'Point') {
+    map.flyTo({
+      center: geometry.coordinates as [number, number],
+      zoom: 17,
+    })
+
+    highlightFeature(feature)
+  }
+}
+const handleDelete = async (index: number, row: TableRowData) => {
+  console.log(index, row)
+  // 打开编辑模式，并切换到删除要素模式
+  if (!isEditingMode.value) {
+    isEditingMode.value = true
+    editingMode.value = 'deleteFeature'
+    updateMapCursor() // 更新鼠标样式
+  } else {
+    // 如果当前是编辑模式，则切换到删除要素模式
+    editingMode.value = 'deleteFeature'
+    updateMapCursor() // 更新鼠标样式
+  }
+  if (!map) return
+  const feature = geojsonDataMap.get(String(row.id))
+  if (!feature) return
+  try {
+    await ElMessageBox.confirm(
+      `是否确认删除消防栓 ID: ${feature.properties?.Name} `,
+      '确认删除',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+    // 具体删除逻辑
+    const templateFeature: GeoJSON.Feature = {
+      type: 'Feature',
+      id: feature.id, // 使用选中要素的 ID
+      geometry: feature.geometry,
+      properties: feature.properties,
+    }
+    // 更新临时要素数据集
+    editingGeoJsonData.value.features.push(templateFeature)
+    // 删除要素marker
+    editingGeoJsonData.value.features.forEach((feature) => {
+      // 根据自定义属性删除要素
+      if (markers.length) {
+        markers.forEach((marker) => {
+          if (
+            marker.getElement().dataset.featureId === feature.properties?.Name
+          ) {
+            marker.remove()
+          }
+        })
+      }
+    })
+    // 删除要素显示
+    const source = map?.getSource('sdjzdx_FireHydranty_Point')
+    if (source) {
+      // 创建新的数据源，过滤掉被删除的要素
+      const templateFeatures = fireHydrantGeojson.value.features.filter(
+        (feature) => feature.id != templateFeature.id,
+      )
+      ;(source as mapboxgl.GeoJSONSource).setData({
+        type: 'FeatureCollection',
+        features: templateFeatures,
+      })
+    }
+    ElMessage.success('要素删除成功！')
+  } catch (error) {
+    console.log('取消删除', error)
+    // 刷新数据源
+    addGeoJSONLayer('sdjzdx_FireHydranty_Point')
+    return
+  }
+}
+
+// 监听弹窗关闭事件
+const handleClosePopup = () => {
+  showFeaturePopup.value = false
+  clearHighlight()
 }
 onMounted(() => {
   initMap()
@@ -957,6 +1234,7 @@ onUnmounted(() => {
       <span class="popup-title-text"
         >当前选择要素：{{ popupFormaData.name }}</span
       >
+      <span class="popup-close" @click="handleClosePopup">×</span>
     </div>
     <span class="popup-item">当前状态：{{ popupFormaData.currentStatus }}</span>
     <span class="popup-item"
@@ -1040,7 +1318,61 @@ onUnmounted(() => {
       >
     </div>
   </div>
-  <!-- 更新要素弹窗表单 -->
+  <div class="geojson-table">
+    <el-table
+      :data="filtergeojsonDataList"
+      style="width: 100%"
+      max-height="250"
+      :row-class-name="tableRowClassName"
+    >
+      <el-table-column
+        fixed
+        prop="id"
+        label="ID"
+        width="120"
+        sortable
+        :formatter="formatId"
+      />
+      <el-table-column prop="name" label="编号" />
+      <el-table-column prop="longitude" label="经度" />
+      <el-table-column prop="latitude" label="维度" />
+      <el-table-column
+        prop="status"
+        label="状态"
+        :filters="[
+          { text: '正常', value: 'normal' },
+          { text: '维修', value: 'repairing' },
+          { text: '错误', value: 'error' },
+        ]"
+        :filter-method="filterStatus"
+        width="120"
+      />
+      <el-table-column prop="pressure" label="压力" width="120" />
+      <el-table-column prop="managementUnit" label="管理单位" />
+      <el-table-column prop="installationDate" label="安装日期" />
+
+      <el-table-column fixed="right" label="操作" width="200">
+        <template #header>
+          <el-input v-model="search" size="small" placeholder="根据编号搜索" />
+        </template>
+        <template #default="scope">
+          <el-button size="small" @click="handleView(scope.$index, scope.row)">
+            查看
+          </el-button>
+          <el-button size="small" @click="handleEdit(scope.$index, scope.row)">
+            编辑
+          </el-button>
+          <el-button
+            size="small"
+            type="danger"
+            @click="handleDelete(scope.$index, scope.row)"
+          >
+            删除
+          </el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+  </div>
 </template>
 <style scoped lang="scss">
 .map-container {
@@ -1069,6 +1401,20 @@ onUnmounted(() => {
     padding-bottom: 15px;
     margin-bottom: 20px;
     border-bottom: 1px solid #ccc;
+    position: relative;
+  }
+
+  .popup-close {
+    position: absolute;
+    top: 0;
+    right: 10px;
+    font-size: 24px;
+    cursor: pointer;
+    color: #999;
+  }
+
+  .popup-close:hover {
+    color: #333;
   }
   .popup-item {
     display: block;
@@ -1136,6 +1482,35 @@ onUnmounted(() => {
     gap: 10px; // 按钮间基础间距
     margin-top: 20px; // 与表单拉开基础距离
   }
+}
+.geojson-table {
+  position: absolute;
+  bottom: 35px;
+  left: 210px;
+  width: calc(100vw - 250px);
+  max-height: 300px;
+  padding: 10px;
+  background-color: #ffffffd5;
+  border-radius: 5px;
+  .el-table {
+    background-color: #4c9ff4;
+  }
+}
+
+/* 状态行颜色 */
+.geojson-table :deep(.normal-row) td {
+  background-color: #f0f9ff !important;
+  color: #409eff;
+}
+
+.geojson-table :deep(.repairing-row) td {
+  background-color: #fdf6ec !important;
+  color: #e6a23c;
+}
+
+.geojson-table :deep(.error-row) td {
+  background-color: #fef0f0 !important;
+  color: #f56c6c;
 }
 </style>
 <!-- 自定义标记样式 -->
