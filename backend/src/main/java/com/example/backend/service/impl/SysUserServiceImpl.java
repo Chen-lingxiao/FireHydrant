@@ -1,6 +1,8 @@
 package com.example.backend.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.backend.entity.SysUser;
 import com.example.backend.mapper.SysUserMapper;
@@ -32,5 +34,13 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         queryWrapper.eq("name", name);
         queryWrapper.eq("password", password);
         return baseMapper.selectOne(queryWrapper); // 查询用户
+    }
+    // 分页查询
+    // UsersServiceImpl 分页查询实现
+    @Override
+    public IPage<SysUser> getUserPage(Page<SysUser> page) {
+        QueryWrapper<SysUser> queryWrapper = new QueryWrapper<>();
+        queryWrapper.orderByAsc("\"id\""); // 建议添加排序条件（避免分页结果顺序混乱）
+        return baseMapper.selectPage(page, queryWrapper); // 执行分页查询
     }
 }
