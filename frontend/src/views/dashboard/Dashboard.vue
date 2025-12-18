@@ -221,6 +221,78 @@ const loadCampusBoundaryData = async () => {
     console.error('显示校园范围数据失败：', error)
   }
 }
+// 加载建筑物点数据
+const loadBuildingPointData = async () => {
+  try {
+    const geojsonData = await getGeojson('sdjzdx_Buildings_Point')
+    if (geojsonData) {
+      const dataSource = await Cesium.GeoJsonDataSource.load(geojsonData)
+      dataSource.entities.values.forEach((entity) => {
+        const name = entity.properties?.Name.getValue()
+        console.log(
+          '建筑物点数据:',
+          name,
+          '位置:',
+          entity.position?.getValue(Cesium.JulianDate.now()),
+        )
+        entity.label = undefined
+        entity.billboard = undefined
+        // entity.billboard = new Cesium.BillboardGraphics({
+        //   image: createTextCanvas(name), // 纯文字Canvas
+        //   verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        //   pixelOffset: new Cesium.Cartesian2(0, -20), // 稍微上移
+        //   disableDepthTestDistance: Number.POSITIVE_INFINITY, // 始终在最前
+        //   scale: 1, // 整体缩放
+        //   scaleByDistance: new Cesium.NearFarScalar(100, 0.5, 2000, 0.2), // 根据距离缩放
+        // })
+        entity.label = new Cesium.LabelGraphics({
+          showBackground: false,
+          scale: 0.5, // 缩小字体大小
+          font: 'bold 32px sans-serif',
+          text: name,
+          pixelOffset: new Cesium.Cartesian2(0, -50), // 标签位置稍微偏移
+          disableDepthTestDistance: Number.POSITIVE_INFINITY, // 始终在最前
+        })
+      })
+      // 将数据源添加到管理器
+      viewer.value?.dataSources.add(dataSource)
+    }
+  } catch (error) {
+    console.error('显示建筑物点数据失败：', error)
+  }
+}
+// // 创建纯文字Canvas
+// const createTextCanvas = (
+//   text: string,
+//   textColor: string = 'white',
+// ): HTMLCanvasElement => {
+//   const canvas: HTMLCanvasElement = document.createElement('canvas')
+//   const context: CanvasRenderingContext2D | null = canvas.getContext('2d')
+
+//   if (!context) {
+//     return canvas
+//   }
+
+//   const fontSize: number = 48 // 使用较大字体，通过scale控制大小
+
+//   // 设置字体测量文本宽度
+//   context.font = `bold ${fontSize}px sans-serif`
+//   const textWidth: number = context.measureText(text).width
+
+//   // 设置Canvas大小（只需要文字大小）
+//   canvas.width = textWidth + 4 // 留一点边距
+//   canvas.height = fontSize + 4
+
+//   // 清除背景（透明）
+//   context.clearRect(0, 0, canvas.width, canvas.height)
+
+//   // 绘制文字填充
+//   context.fillStyle = textColor
+//   context.font = `bold ${fontSize}px sans-serif`
+//   context.fillText(text, 2, fontSize - 2)
+
+//   return canvas
+// }
 // 加载3dtiles图层
 const load3DTilesLayer = async () => {
   try {
@@ -294,6 +366,7 @@ const load3DTilesLayer = async () => {
 const loadLayers = async () => {
   await loadCampusBoundaryData() // 加载校园范围数据
   await loadRoadData() // 加载道路线数据
+  await loadBuildingPointData() // 加载建筑物点数据
   await load3DTilesLayer() // 加载3D Tiles图层
   await loadFireHydrantData() // 加载消防栓点数据（最后加载确保在最上层）
 }
