@@ -829,6 +829,41 @@ const handleClick = (row: FireHydrantData) => {
     console.warn(`未找到name为 ${row.name} 的实体`)
   }
 }
+const dateRef = ref<HTMLElement | null>(null)
+const dayRef = ref<HTMLElement | null>(null)
+const timeRef = ref<HTMLElement | null>(null)
+const timer = null
+
+const updateClock = () => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const days = [
+    '星期日',
+    '星期一',
+    '星期二',
+    '星期三',
+    '星期四',
+    '星期五',
+    '星期六',
+  ]
+  const weekday = days[now.getDay()]
+  const hours = String(now.getHours()).padStart(2, '0')
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+  const seconds = String(now.getSeconds()).padStart(2, '0')
+
+  // 使用ref更新所有元素
+  if (dateRef.value) {
+    dateRef.value.innerText = `${year}年${month}月${day}日`
+  }
+  if (dayRef.value) {
+    dayRef.value.innerText = `${weekday}`
+  }
+  if (timeRef.value) {
+    timeRef.value.innerText = `${hours}:${minutes}:${seconds}`
+  }
+}
 
 // 初始化echarts
 const initEcharts = () => {
@@ -841,10 +876,15 @@ onMounted(async () => {
   loadLayers() // 加载GeoJSON图层
   await loadEcharts() // 加载echarts图表
   initEcharts() // 初始化echarts图表
+  updateClock()
+  setInterval(updateClock, 1000) // 每秒更新一次时间
   console.log(normalFireHydrants.value, errorFireHydrants.value)
 })
 onBeforeUnmount(() => {
   destroyCesium()
+  if (timer) {
+    clearInterval(timer)
+  }
 })
 </script>
 
@@ -903,6 +943,29 @@ onBeforeUnmount(() => {
           <p class="info-value warning">
             {{ repairingFireHydrants.length }}
           </p>
+        </div>
+        <div id="clock" class="info-time">
+          <div
+            id="date"
+            ref="dateRef"
+            style="font-size: 20px; margin-bottom: 5px"
+          >
+            2023年10月15日
+          </div>
+          <div
+            id="day"
+            ref="dayRef"
+            style="font-size: 16px; margin-bottom: 10px"
+          >
+            星期日
+          </div>
+          <div
+            id="time"
+            ref="timeRef"
+            style="font-size: 32px; font-weight: bold; letter-spacing: 1px"
+          >
+            12:00:00
+          </div>
         </div>
       </div>
     </div>
@@ -1018,10 +1081,28 @@ onBeforeUnmount(() => {
     padding: 15px;
     box-sizing: border-box;
     flex: 1;
+    position: relative;
     .info-grid {
       display: flex;
       flex-direction: column;
       justify-content: space-between;
+      .info-item {
+        padding-top: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .info-time {
+        width: 200px;
+        position: absolute;
+        right: 20px;
+        background: #22222200;
+        color: rgb(0, 116, 248);
+        border-radius: 8px;
+        font-family: Arial, sans-serif;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      }
     }
   }
   .table-card {
@@ -1038,11 +1119,6 @@ onBeforeUnmount(() => {
     }
   }
 
-  .info-item {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
   .info-label {
     margin: 0;
     color: #aaa;
