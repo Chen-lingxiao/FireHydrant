@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 // 当前页码和每页显示数量
-// 当前页码和每页显示数量
-const currentPageRef = ref(1)
-const pageSizeRef = ref(10)
+const currentPage = ref(1)
+const pageSize = ref(10)
 
 // 定义表格列配置接口
 interface TableColumn {
@@ -22,10 +21,7 @@ const props = defineProps<{
   columns: TableColumn[] // 列配置数组
   data: TableData[] // 表格数据数组
   total: number // 数据总数
-  pageSize: number // 每页条数
-  currentPage: number // 当前页码
-  // 搜索关键字列表
-  searchKeys: string[]
+  searchKeys: string[] // 搜索关键字列表
 }>()
 
 // 定义表格数据过滤逻辑
@@ -49,21 +45,30 @@ const filterTableData = computed(() => {
     }),
   )
 })
-// 页码变化
+const emit = defineEmits<{
+  (e: 'update-page', page: number, pageSize: number): void
+  (e: 'edit', row: TableData): void
+  (e: 'delete', row: TableData): void
+}>()
+// 处理当前页变化
 const handleCurrentChange = (val: number) => {
-  currentPageRef.value = val
+  currentPage.value = val // 更新当前页码
+  emit('update-page', val, pageSize.value)
 }
 // 每页条数变化
 const handleSizeChange = (val: number) => {
-  pageSizeRef.value = val
+  currentPage.value = 1 // 重置到第一页
+  emit('update-page', currentPage.value, val)
 }
 // 编辑按钮点击事件
-const handleEdit = (index: number, row: TableData) => {
-  console.log(index, row)
+const handleEdit = (row: TableData) => {
+  console.log(row)
+  emit('edit', row)
 }
 // 删除按钮点击事件
-const handleDelete = (index: number, row: TableData) => {
-  console.log(index, row)
+const handleDelete = (row: TableData) => {
+  console.log(row)
+  emit('delete', row)
 }
 </script>
 
@@ -84,12 +89,8 @@ const handleDelete = (index: number, row: TableData) => {
           <el-input v-model="search" placeholder="输入进行搜索" />
         </template>
         <template #default="scope">
-          <el-button @click="handleEdit(scope.$index, scope.row)"
-            >编辑</el-button
-          >
-          <el-button
-            type="danger"
-            @click="handleDelete(scope.$index, scope.row)"
+          <el-button @click="handleEdit(scope.row)">编辑</el-button>
+          <el-button type="danger" @click="handleDelete(scope.row)"
             >删除</el-button
           >
         </template>
@@ -99,8 +100,8 @@ const handleDelete = (index: number, row: TableData) => {
     <div class="page">
       <div class="demo-pagination-block">
         <el-pagination
-          v-model:current-page="currentPageRef"
-          v-model:page-size="pageSizeRef"
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
           :page-sizes="[5, 10]"
           :pager-count="5"
           layout="total, sizes, prev, pager, next, jumper"

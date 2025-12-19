@@ -17,7 +17,7 @@ export interface PageQueryParams {
 }
 // 用户信息类型
 export interface User {
-  id: string
+  id: number
   name: string
   sex: string
   birthDate: string
@@ -44,7 +44,7 @@ export const getUserByid = (id: number) => {
   return request.get(`/api/users/${id}`)
 }
 // 分页查询接口
-export const getUserList = (params: PageQueryParams) => {
+export const getUserPagingQuery = (params: PageQueryParams) => {
   return request.get('/api/users/page', { params })
 }
 // 删除用户接口
