@@ -31,6 +31,9 @@ const HandleLogout = async () => {
     console.error('退出登录失败', error)
   }
 }
+const toInfo = () => {
+  router.push('/app/profile')
+}
 </script>
 <template>
   <header>

@@ -987,112 +987,115 @@ onBeforeUnmount(() => {
         <button class="close-btn" @click="showPopup = false">x</button>
       </div>
     </div>
-  </div>
-  <div class="leaft-info">
-    <div class="echarts">
-      <div id="status-pie-chart" style="width: 100%; height: 100%"></div>
+    <div class="leaft-info">
+      <div class="echarts">
+        <div id="status-pie-chart" style="width: 100%; height: 100%"></div>
+      </div>
+      <div class="echarts">
+        <div
+          id="avg-pressure-line-chart"
+          style="width: 100%; height: 100%"
+        ></div>
+      </div>
+      <div class="echarts">
+        <div id="pressure-bar-chart" style="width: 100%; height: 100%"></div>
+      </div>
     </div>
-    <div class="echarts">
-      <div id="avg-pressure-line-chart" style="width: 100%; height: 100%"></div>
-    </div>
-    <div class="echarts">
-      <div id="pressure-bar-chart" style="width: 100%; height: 100%"></div>
-    </div>
-  </div>
-  <div class="right-info">
-    <div class="info-card">
-      <h3>系统信息</h3>
-      <div class="info-grid">
-        <div class="info-item">
-          <p class="info-label">正常消防栓数量</p>
-          <p class="info-value">{{ normalFireHydrants.length }}</p>
-        </div>
-        <div class="info-item">
-          <p class="info-label">压力异常消防栓数量</p>
-          <p class="info-value error">{{ errorFireHydrants.length }}</p>
-        </div>
-        <div class="info-item">
-          <p class="info-label">维修中消防栓数量</p>
-          <p class="info-value warning">
-            {{ repairingFireHydrants.length }}
-          </p>
-        </div>
-        <div id="clock" class="info-time">
-          <div
-            id="date"
-            ref="dateRef"
-            style="font-size: 20px; margin-bottom: 5px"
-          >
-            2023年10月15日
+    <div class="right-info">
+      <div class="info-card">
+        <h3>系统信息</h3>
+        <div class="info-grid">
+          <div class="info-item">
+            <p class="info-label">正常消防栓数量</p>
+            <p class="info-value">{{ normalFireHydrants.length }}</p>
           </div>
-          <div
-            id="day"
-            ref="dayRef"
-            style="font-size: 16px; margin-bottom: 10px"
-          >
-            星期日
+          <div class="info-item">
+            <p class="info-label">压力异常消防栓数量</p>
+            <p class="info-value error">{{ errorFireHydrants.length }}</p>
           </div>
-          <div
-            id="time"
-            ref="timeRef"
-            style="font-size: 32px; font-weight: bold; letter-spacing: 1px"
-          >
-            12:00:00
+          <div class="info-item">
+            <p class="info-label">维修中消防栓数量</p>
+            <p class="info-value warning">
+              {{ repairingFireHydrants.length }}
+            </p>
+          </div>
+          <div id="clock" class="info-time">
+            <div
+              id="date"
+              ref="dateRef"
+              style="font-size: 20px; margin-bottom: 5px"
+            >
+              2023年10月15日
+            </div>
+            <div
+              id="day"
+              ref="dayRef"
+              style="font-size: 16px; margin-bottom: 10px"
+            >
+              星期日
+            </div>
+            <div
+              id="time"
+              ref="timeRef"
+              style="font-size: 32px; font-weight: bold; letter-spacing: 1px"
+            >
+              12:00:00
+            </div>
           </div>
         </div>
       </div>
-    </div>
-    <div class="table-card">
-      <h3>故障消防栓列表</h3>
-      <el-table :data="errorFireHydrants" style="width: 100%" height="230px">
-        <el-table-column prop="name" label="编号" min-width="100" />
-        <el-table-column
-          prop="managementUnit"
-          label="管理单位"
-          min-width="100"
-        />
-        <el-table-column prop="pressure" label="MPa" min-width="50" />
-        <el-table-column fixed="right" label="操作" min-width="50">
-          <template #default="scope">
-            <el-button
-              link
-              type="primary"
-              size="small"
-              @click="handleClick(scope.row)"
-            >
-              查看
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-    <div class="table-card">
-      <h3>维修消防栓信息</h3>
-      <el-table
-        :data="repairingFireHydrants"
-        style="width: 100%"
-        height="230px"
-      >
-        <el-table-column prop="name" label="编号" min-width="100" />
-        <el-table-column
-          prop="managementUnit"
-          label="管理单位"
-          min-width="100"
-        />
-        <el-table-column prop="pressure" label="MPa" min-width="50" />
-        <el-table-column fixed="right" label="操作" min-width="50">
-          <template #default="scope">
-            <el-button
-              link
-              type="primary"
-              size="small"
-              @click="handleClick(scope.row)"
-            >
-              查看
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="table-card">
+        <h3>故障消防栓列表</h3>
+        <el-table :data="errorFireHydrants" style="width: 100%" height="230px">
+          <el-table-column prop="name" label="编号" min-width="100" />
+          <el-table-column
+            prop="managementUnit"
+            label="管理单位"
+            min-width="100"
+          />
+          <el-table-column prop="pressure" label="MPa" min-width="50" />
+          <el-table-column fixed="right" label="操作" min-width="50">
+            <template #default="scope">
+              <el-button
+                link
+                type="primary"
+                size="small"
+                @click="handleClick(scope.row)"
+              >
+                查看
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <div class="table-card">
+        <h3>维修消防栓信息</h3>
+        <el-table
+          :data="repairingFireHydrants"
+          style="width: 100%"
+          height="230px"
+        >
+          <el-table-column prop="name" label="编号" min-width="100" />
+          <el-table-column
+            prop="managementUnit"
+            label="管理单位"
+            min-width="100"
+          />
+          <el-table-column prop="pressure" label="MPa" min-width="50" />
+          <el-table-column fixed="right" label="操作" min-width="50">
+            <template #default="scope">
+              <el-button
+                link
+                type="primary"
+                size="small"
+                @click="handleClick(scope.row)"
+              >
+                查看
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </div>
   </div>
 </template>
@@ -1101,7 +1104,7 @@ onBeforeUnmount(() => {
 .cesium-container {
   position: relative;
   width: 100%;
-  height: calc(100vh - 60px);
+  height: 100%;
   .cesium-viewer {
     width: 100%;
     height: 100%;
@@ -1109,9 +1112,10 @@ onBeforeUnmount(() => {
 }
 .leaft-info {
   width: 400px;
-  height: calc(100vh - 60px);
+  height: 100%;
+  max-height: -webkit-fill-available;
   position: absolute;
-  top: 60px;
+  top: 0px;
   left: 0px;
   z-index: 100;
   backdrop-filter: blur(10px);
@@ -1134,9 +1138,10 @@ onBeforeUnmount(() => {
 }
 .right-info {
   width: 400px;
-  height: calc(100vh - 60px);
+  height: 100%;
+  max-height: -webkit-fill-available;
   position: absolute;
-  top: 60px;
+  top: 0px;
   right: 0px;
   z-index: 100;
   backdrop-filter: blur(10px);
