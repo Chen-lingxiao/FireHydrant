@@ -172,20 +172,13 @@ const handleRegister = async () => {
             ></el-input
           ></el-form-item>
           <el-form-item
-            ><el-button
-              type="primary"
-              class="form-btn"
-              @click="handleLogin"
+            ><el-button type="primary" class="form-btn" @click="handleLogin"
               >登录</el-button
             >
           </el-form-item>
           <el-form-item class="form-row">
             还没账号？
-            <el-link
-              type="info"
-              :underline="false"
-              @click="toggleForm()"
-            >
+            <el-link type="info" :underline="false" @click="toggleForm()">
               点击注册 →
             </el-link>
           </el-form-item>
@@ -240,19 +233,12 @@ const handleRegister = async () => {
             ></el-input>
           </el-form-item>
           <el-form-item
-            ><el-button
-              type="primary"
-              class="form-btn"
-              @click="handleRegister"
+            ><el-button type="primary" class="form-btn" @click="handleRegister"
               >注册</el-button
             >
           </el-form-item>
           <el-form-item class="form-row">
-            <el-link
-              type="info"
-              :underline="false"
-              @click="toggleForm()"
-            >
+            <el-link type="info" :underline="false" @click="toggleForm()">
               ← 返回登录
             </el-link>
           </el-form-item>
