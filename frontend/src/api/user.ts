@@ -29,29 +29,29 @@ export interface User {
 }
 // 登录接口
 export const login = (data: LoginParams) => {
-  return request.post('/api/users/login', data)
+  return request.post('/users/login', data)
 }
 // 注册接口
 export const register = (data: RegisterParams) => {
-  return request.post('/api/users/register', data)
+  return request.post('/users/register', data)
 }
 // 退出登录接口
 export const logout = () => {
-  return request.post('/api/users/logout')
+  return request.post('/users/logout')
 }
 // 查询用户接口
 export const getUserByid = (id: number) => {
-  return request.get(`/api/users/${id}`)
+  return request.get(`/users/${id}`)
 }
 // 分页查询接口
 export const getUserPagingQuery = (params: PageQueryParams) => {
-  return request.get('/api/users/page', { params })
+  return request.get('/users/page', { params })
 }
 // 删除用户接口
 export const deleteUser = (id: number) => {
-  return request.delete(`/api/users/del/${id}`)
+  return request.delete(`/users/del/${id}`)
 }
 // 修改用户接口
 export const updateUser = (data: User) => {
-  return request.put(`/api/users/update`, data)
+  return request.put(`/users/update`, data)
 }
