@@ -3,9 +3,9 @@ import type { Feature } from 'geojson'
 
 // 图层固定信息（统一维护，避免硬编码）
 const LAYER_INFO = {
-  baseURL: 'http://localhost:8085/geoserver', // GeoServer基础URL
+  baseURL: 'http://116.62.134.213/geoserver', // GeoServer基础URL
   workspace: 'sdjzdx', // 工作区名称
-  namespace: 'http://localhost:8085/geoserver/sdjzdx', // 工作区命名空间（需与GeoServer一致）
+  namespace: 'http://116.62.134.213/geoserver/sdjzdx', // 工作区命名空间（需与GeoServer一致）
   geomField: 'geom', // 几何字段名
 }
 // --------------------------wfs 服务------------------------------------
