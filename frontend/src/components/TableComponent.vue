@@ -84,7 +84,7 @@ const handleDelete = (row: TableData) => {
         :prop="col.prop"
         :width="col.width"
       />
-      <el-table-column align="center" label="操作" width="200">
+      <el-table-column align="center" label="操作" width="200" fixed="right">
         <template #header>
           <el-input v-model="search" placeholder="输入进行搜索" />
         </template>
@@ -116,7 +116,7 @@ const handleDelete = (row: TableData) => {
 
 <style scoped lang="scss">
 .table-data {
-  width: 100%;
+  width: calc(100% - 200px);
   min-height: 500px;
   padding: 20px;
   position: relative;

@@ -1226,6 +1226,11 @@ onBeforeUnmount(() => {
     background-color: rgba(0, 0, 0, 0.3);
     color: white;
   }
+  /* === 修复固定列白色背景问题 === */
+  /* 方法1：覆盖CSS变量（推荐，一劳永逸） */
+  :deep(.el-table) {
+    --el-table-header-bg-color: rgba(0, 0, 0, 0.3);
+  }
   :deep(.el-table tr) {
     background-color: transparent;
     color: white;

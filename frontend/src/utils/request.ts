@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus'
 import router from '@/router'
 
 const request = axios.create({
-  baseURL: 'http://localhost:8080', // 设置基础URL
+  baseURL: '/api', // 修改为相对路径，由Nginx代理到后端
   timeout: 5000, // 设置超时时间
   headers: {
     'Content-Type': 'application/json;charset=utf-8', // 设置请求头

@@ -11,7 +11,7 @@ const tableConfig = ref({
   title: '用户信息管理列表',
   columns: [
     { label: 'ID', prop: 'id', width: 80 },
-    { label: '用户名', prop: 'name', width: 150 },
+    { label: '用户名', prop: 'name', width: 120 },
     { label: '权限', prop: 'role', width: 120 },
     { label: '性别', prop: 'sex', width: 80 },
     { label: '出生日期', prop: 'birthDate' },
